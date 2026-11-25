@@ -158,7 +158,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-/* ============ Himalayan Drive v3.2 — Free World Nepal ============
+/* ============ Himalayan Drive v3.3 — Free World Nepal ============
    Open 1200x1200m valley: Prithvi Highway, Mugling bazaar, Trishuli river,
    dirt tracks, hill switchbacks. Extrude-profile cars modelled on real
    Nepal road cars (City sedan, Creta SUV, modern EV). Wheels roll on a
@@ -501,14 +501,39 @@ function nearestRoad(x, z, out) {
 }
 const distToRiver = (x, z, out) => nearestIn(riverGrid, riverPts, x, z, out);
 
+/* Nearest road sample + LOWEST road height within the flatten radius.
+   At junctions several roads overlap; flattening to the nearest road's height
+   could leave the terrain ABOVE a lower neighbour's ribbon (the grass wedge
+   over the asphalt at Mugling in v3.2). Flattening to the minimum height keeps
+   the terrain below EVERY ribbon nearby; away from junctions only one road is
+   in range, so nothing changes there. */
+function flattenTarget(x, z) {
+  const { g, cell } = roadGrid;
+  const cx = Math.floor(x / cell), cz = Math.floor(z / cell);
+  let dMin = 1e12, minY = Infinity;
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    const arr = g.get((cx + dx) + ',' + (cz + dz));
+    if (!arr) continue;
+    for (const ei of arr) {
+      const e = allRoadEntries[ei];
+      const ddx = x - e.x, ddz = z - e.z, d2 = ddx * ddx + ddz * ddz;
+      if (d2 < 26 * 26) {
+        if (d2 < dMin) dMin = d2;
+        const y = e.road.roadY[e.i];
+        if (y < minY) minY = y;
+      }
+    }
+  }
+  return minY === Infinity ? null : { d: Math.sqrt(dMin), minY };
+}
 /* ground height used by the terrain mesh AND by physics (via the grid below) */
 function groundHeight(x, z) {
-  const near = nearestRoad(x, z);
+  const near = flattenTarget(x, z);
   let h = baseHeight(x, z);
-  if (near.d < 26) {
+  if (near && near.d < 26) {
     const t = Math.min(1, near.d / 26), s = t * t * (3 - 2 * t);
     // terrain must sit BELOW the road ribbon (ribbon is at roadY + 0.20)
-    h = near.road.roadY[near.i] + (h - near.road.roadY[near.i]) * s - (1 - s) * 0.15;
+    h = near.minY + (h - near.minY) * s - (1 - s) * 0.15;
   } else {
     const rv = distToRiver(x, z);
     if (rv.d < 24) {
@@ -718,6 +743,16 @@ function roadNearestIdx(road, x, z) {
   road.pts.forEach((p, i) => { const d = (p.x - x) ** 2 + (p.z - z) ** 2; if (d < best) { best = d; bi = i; } });
   return bi;
 }
+/* ---------- spawn: a straight mid-highway stretch, NOT the Mugling junction ----------
+   v3.1 spawned at the highway sample nearest (0,0) — the junction itself, where
+   three ribbons overlap at slightly different smoothed heights, a grass wedge
+   pokes over the asphalt, and a branch pole stands ~8 m behind the car in the
+   chase-camera line. v3.3 spawns ~300 m west of the junction on a straight
+   stretch: exactly on the centreline (a sample point, so nearestRoad d ≈ 0 —
+   well inside the 5 m half-width, so the off-road warning cannot fire at
+   0 km/h), heading along the road tangent. */
+const SPAWN_IDX = roadNearestIdx(highway, -300, 60);
+const SPAWN_PT = highway.pts[SPAWN_IDX];
 const staticObstacles = []; // {x,z,r} parked vehicles
 const drumObstacles = []; // {x,z,r}
 
@@ -1145,7 +1180,11 @@ const flagSpots = []; // {a:Vector3, b:Vector3}
     const spots = [];
     for (let i = 0; i < r.n; i += 10) {
       const n = r.normals[i];
-      spots.push([r.pts[i].x + n.x * 7.8, r.roadY[i], r.pts[i].z + n.z * 7.8, Math.atan2(r.tangents[i].x, r.tangents[i].z)]);
+      const px = r.pts[i].x + n.x * 7.8, pz = r.pts[i].z + n.z * 7.8;
+      // no pole within 25 m of the spawn: in v3.2 a branch pole stood right
+      // behind the car and blocked the centre of the chase-camera view
+      if (Math.hypot(px - SPAWN_PT.x, pz - SPAWN_PT.z) < 25) continue;
+      spots.push([px, r.roadY[i], pz, Math.atan2(r.tangents[i].x, r.tangents[i].z)]);
     }
     allSpots.push(spots);
   }
@@ -1474,10 +1513,16 @@ function wheel(r, wdt, alloy = false, aero = false) {
     spin.add(m);
     return pivot;
   }
-  // player wheels: treaded tyre (tread on the curved face, plain sidewalls)
-  // + bold-spoke alloy hub (or aero disc for the EV)
+  // player wheels: treaded tyre + bold-spoke alloy hub (or aero disc for
+  // the EV). CylinderGeometry groups are [side, top cap, bottom cap]; after
+  // rotateZ the caps face ±X, i.e. the outer face on each side — so the
+  // spoke texture goes on the CAPS too, not just the hub (v3.2: from the
+  // chase view the wheels were plain black because the visible outer face
+  // was a plain cap). The hub (0.58r) covers the centre; the cap annulus
+  // shows the spoke tips, and both rotate with the wheel.
   const tyreGeo = new THREE.CylinderGeometry(r, r, wdt, 18); tyreGeo.rotateZ(Math.PI / 2);
-  const tyre = new THREE.Mesh(tyreGeo, [treadMat, sideMat, sideMat]);
+  const capMat = new THREE.MeshStandardMaterial({ map: aero ? aeroTex : alloyTex, metalness: 0.8, roughness: 0.35 });
+  const tyre = new THREE.Mesh(tyreGeo, [treadMat, capMat, capMat]);
   tyre.castShadow = true; tyre.userData.isWheel = true;
   const hubGeo = new THREE.CylinderGeometry(r * 0.58, r * 0.58, wdt + 0.02, 12); hubGeo.rotateZ(Math.PI / 2);
   const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({ map: aero ? aeroTex : alloyTex, metalness: 0.8, roughness: 0.35 }));
@@ -1560,11 +1605,11 @@ function cabinShape(cx0, cx1, yBase, yTop, slopeF, slopeR) {
    aero wheels, blue accent, quick off the line). Bolero/Swift/Hilux stay
    as traffic. lights: slim | split | bar | std. grille: chrome | big | closed. */
 const CAR_DEFS = {
-  city: { name: 'City', color: 0xe8e8e6, L: 4.6, W: 1.8, topRear: 0.82, topMid: 0.9, topFront: 0.72, wheelF: 1.42, wheelR: -1.42, wheelRr: 0.38, cabin: { cx0: -1.5, cx1: 0.95, yBase: 0.86, yTop: 1.32, slopeF: 0.7, slopeR: 0.55, w: 1.5 }, topSpeed: 24, steerFactor: 1.0, accel: 7, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  city: { name: 'City', color: 0xe8e8e6, L: 4.6, W: 1.8, topRear: 0.82, topMid: 0.9, topFront: 0.72, wheelF: 1.42, wheelR: -1.42, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.95, yBase: 0.86, yTop: 1.32, slopeF: 0.7, slopeR: 0.55, w: 1.5 }, topSpeed: 24, steerFactor: 1.0, accel: 7, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
   creta: { name: 'Creta', color: 0xb02020, L: 4.3, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.9, wheelF: 1.32, wheelR: -1.32, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.8, yBase: 0.95, yTop: 1.68, slopeF: 0.5, slopeR: 0.18, w: 1.6 }, topSpeed: 23, steerFactor: 0.95, accel: 6.8, bed: false, rails: true, lights: 'split', grille: 'big', aero: false, accent: null },
   ev: { name: 'EV', color: 0xcfd8dc, L: 4.4, W: 1.85, topRear: 0.95, topMid: 1.0, topFront: 0.82, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.45, cx1: 0.85, yBase: 0.92, yTop: 1.55, slopeF: 0.6, slopeR: 0.3, w: 1.55 }, topSpeed: 25, steerFactor: 1.05, accel: 8.5, bed: false, rails: false, lights: 'bar', grille: 'closed', aero: true, accent: 0x2f9df0 },
   bolero: { name: 'Bolero', color: 0xf2f2f0, L: 4.4, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.92, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.55, cx1: 0.75, yBase: 0.95, yTop: 1.72, slopeF: 0.45, slopeR: 0.15, w: 1.6 }, topSpeed: 22, steerFactor: 0.9, accel: 6.5, bed: false, rails: true, lights: 'std', grille: 'chrome', aero: false, accent: null },
-  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.82, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.36, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.82, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.38, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
   hilux: { name: 'Hilux', color: 0xb8c8d8, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 23, steerFactor: 1.0, accel: 7, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null },
   pickup: { name: 'Pickup', color: 0x8a6a3a, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null }
 };
@@ -1580,7 +1625,7 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   const L = cfg.L, W = cfg.W;
   const wheels = [], steers = [];
   const addWheel = (x, z, r, front) => {
-    const p = wheel(r, 0.3, alloy, cfg.aero); p.position.set(x, r, z); g.add(p); wheels.push(p); if (front) steers.push(p);
+    const p = wheel(r, 0.34, alloy, cfg.aero); p.position.set(x, r, z); g.add(p); wheels.push(p); if (front) steers.push(p);
   };
   // body + cabin live in profile space (length = X); rotate so length becomes forward (+Z)
   const bodyG = new THREE.Group();
@@ -1594,12 +1639,28 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   roof.castShadow = true;
   bodyG.add(roof);
   g.add(bodyG);
+  if (isPlayer) {
+    // roof crown + rain gutters + glass sunroof (sedan/EV; the SUV keeps its
+    // rails) — the flat-slab roof was the first thing the v3.2 check called out
+    const cabC = (cb.cx0 + cb.cx1) / 2;
+    g.add(box(cb.w * 0.78, 0.035, roofLen * 0.72, paint, 0, cb.yTop + 0.055, cabC));
+    for (const s of [-1, 1]) g.add(box(0.05, 0.035, roofLen * 0.92, dark, s * (cb.w / 2 - 0.02), cb.yTop + 0.05, cabC));
+    if (!cfg.rails) g.add(box(cb.w * 0.62, 0.02, roofLen * 0.5, glass, 0, cb.yTop + 0.09, cabC + 0.1));
+  }
   if (cfg.bed) { // pickup bed with tarp-covered load (group space, behind the cabin)
     const bedLen = cb.cx0 + L / 2, bedZ = (-L / 2 + cb.cx0) / 2;
     for (const s of [-1, 1]) g.add(box(0.06, 0.35, bedLen, paint, s * (W / 2 - 0.03), 1.15, bedZ));
     g.add(box(W, 0.35, 0.06, paint, 0, 1.15, -L / 2 + 0.03)); // tailgate
     g.add(box(W * 0.9, 0.32, bedLen * 0.85, new THREE.MeshStandardMaterial({ color: 0x4a5d3a, roughness: 0.95 }), 0, 1.28, bedZ)); // tarp load
   }
+  // bumpers: separate boxes that stick out past the body, front + rear, with
+  // a dark lower valance and fog lamps — the flat-slab rear was the v3.2
+  // complaint; a real car reads from its bumpers
+  g.add(box(W + 0.06, 0.20, 0.16, paint, 0, 0.37, L / 2 + 0.04));
+  g.add(box(W + 0.06, 0.20, 0.16, paint, 0, 0.37, -L / 2 - 0.04));
+  g.add(box(W * 0.92, 0.10, 0.12, dark, 0, 0.26, L / 2 + 0.10));
+  g.add(box(W * 0.92, 0.10, 0.12, dark, 0, 0.26, -L / 2 - 0.10));
+  for (const s of [-1, 1]) g.add(box(0.24, 0.08, 0.06, lightMat, s * (W / 2 - 0.42), 0.38, L / 2 + 0.12));
   if (cfg.rails) {
     for (const s of [-1, 1]) g.add(box(0.07, 0.07, (cb.cx1 - cb.cx0) * 0.8, dark, s * (W * 0.32), cb.yTop + 0.09, (cb.cx0 + cb.cx1) / 2));
   }
@@ -1636,22 +1697,45 @@ function buildExtrudeCar(cfg, color, opts = {}) {
       g.add(box(0.36, 0.16, 0.08, tailMat, s * (W / 2 - 0.4), 0.75, -L / 2 - 0.03)); // taillight
     }
   }
+  // side sculpting. The extrude's flat sides buried the old details: the
+  // bevel swells the body ~0.045 past W/2, so the old mirrors/handles/shut
+  // lines (placed at W/2 + 0.005..0.06) were flush or hidden. Everything now
+  // sits proud of the surface, and door positions follow the cabin — the
+  // sedan's cabin is rear-biased, the pickup's is forward, so fixed numbers
+  // put doors on the bonnet or the bed.
+  const cabC = (cb.cx0 + cb.cx1) / 2;
+  const fDoorZ = cabC + 0.45, rDoorZ = cabC - 0.45;
+  const mirZ = cb.cx1 - 0.25; // A-pillar
+  const skirtLen = (cfg.wheelF - 0.5) - (cfg.wheelR + 0.5);
   for (const s of [-1, 1]) {
-    g.add(box(0.06, 0.12, 0.1, dark, s * (W / 2 + 0.06), 1.15, 0.6)); // mirror
-    // door handles: flush + body-coloured on the EV, dark on the rest
+    // mirror: stalk + housing that actually protrudes, glass on the rear face
+    g.add(box(0.05, 0.05, 0.14, dark, s * (W / 2 + 0.06), 1.12, mirZ));
+    g.add(box(0.10, 0.14, 0.18, paint, s * (W / 2 + 0.13), 1.14, mirZ));
+    g.add(box(0.08, 0.10, 0.02, dark, s * (W / 2 + 0.13), 1.14, mirZ - 0.10));
+    // door panels: thin proud slabs so the sides read as doors, not a slab
+    g.add(box(0.02, 0.38, 0.85, paint, s * (W / 2 + 0.045), 0.60, fDoorZ));
+    if (!cfg.bed) g.add(box(0.02, 0.38, 0.85, paint, s * (W / 2 + 0.045), 0.60, rDoorZ));
+    // door handles (body-coloured on the EV, dark on the rest)
     const hMat = cfg.lights === 'bar' ? paint : dark;
-    g.add(box(0.04, 0.05, 0.28, hMat, s * (W / 2 + 0.01), 0.88, 0.2));
-    g.add(box(0.04, 0.05, 0.28, hMat, s * (W / 2 + 0.01), 0.88, -0.7));
-    // door shut lines
-    g.add(box(0.015, 0.55, 0.02, dark, s * (W / 2 + 0.005), 0.75, 0.35));
-    g.add(box(0.015, 0.55, 0.02, dark, s * (W / 2 + 0.005), 0.75, -0.55));
+    g.add(box(0.05, 0.05, 0.28, hMat, s * (W / 2 + 0.06), 0.78, fDoorZ));
+    if (!cfg.bed) g.add(box(0.05, 0.05, 0.28, hMat, s * (W / 2 + 0.06), 0.78, rDoorZ));
+    // door shut lines at the panel edges (kept below the sloping beltline)
+    g.add(box(0.025, 0.38, 0.03, dark, s * (W / 2 + 0.055), 0.60, fDoorZ + 0.45));
+    g.add(box(0.025, 0.38, 0.03, dark, s * (W / 2 + 0.055), 0.60, fDoorZ - 0.45));
+    if (!cfg.bed) g.add(box(0.025, 0.38, 0.03, dark, s * (W / 2 + 0.055), 0.60, rDoorZ - 0.45));
+    // side skirt between the arches + character line along the doors
+    g.add(box(0.05, 0.14, skirtLen, dark, s * (W / 2 + 0.03), 0.30, 0));
+    g.add(box(0.02, 0.04, 1.6, dark, s * (W / 2 + 0.05), 0.80, cabC));
     // lower side cladding on the SUV / EV
-    if (cfg.lights === 'split' || cfg.lights === 'bar') g.add(box(0.04, 0.12, L * 0.55, dark, s * (W / 2 + 0.005), 0.32, 0));
-    if (isPlayer) {
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 6, 14, Math.PI), dark);
-      arch.position.set(s * (W / 2 + 0.02), 0.42, cfg.wheelF); arch.rotation.y = Math.PI / 2; g.add(arch);
-      const arch2 = arch.clone(); arch2.position.z = cfg.wheelR; g.add(arch2);
-    }
+    if (cfg.lights === 'split' || cfg.lights === 'bar') g.add(box(0.04, 0.12, L * 0.55, dark, s * (W / 2 + 0.055), 0.32, 0));
+    // wheel-arch flares on every car now, not just the player's
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 6, 14, Math.PI), dark);
+    arch.position.set(s * (W / 2 + 0.04), 0.42, cfg.wheelF); arch.rotation.y = Math.PI / 2; g.add(arch);
+    const arch2 = arch.clone(); arch2.position.z = cfg.wheelR; g.add(arch2);
+    // chrome window trim along the bottom of the glass + B-pillar, so the
+    // cabin glass is not one flat dark slab
+    g.add(box(0.03, 0.03, (cb.cx1 - cb.cx0) * 0.92, chrome, s * (cb.w / 2 + 0.015), cb.yBase + 0.03, cabC));
+    g.add(box(0.03, cb.yTop - cb.yBase - 0.06, 0.09, dark, s * (cb.w / 2 + 0.015), (cb.yBase + cb.yTop) / 2, cabC - 0.15));
   }
   // EV extras: blue side accent stripe + charging flap on the front-left fender
   if (cfg.accent) {
@@ -1663,15 +1747,32 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   plateF.position.set(0, 0.55, L / 2 + 0.07); g.add(plateF);
   const plateR = plateF.clone(); plateR.rotation.y = Math.PI; plateR.position.set(0, 0.55, -L / 2 - 0.07); g.add(plateR);
   if (isPlayer) {
+    // rear face: boot shut line, high-mount stop light on the sloped glass,
+    // reflectors low on the bumper, exhaust tip (not on the EV), spoiler lip
+    // on the boot / roof spoiler on the tall SUV — the flat rear slab was the
+    // v3.2 complaint
+    g.add(box(W * 0.8, 0.015, 0.02, dark, 0, 0.72, -L / 2 - 0.055));
+    g.add(box(0.42, 0.05, 0.05, tailMat, 0, cb.yTop - 0.04, cb.cx0 + cb.slopeR * 0.85));
+    for (const s of [-1, 1]) g.add(box(0.3, 0.06, 0.04, tailMat, s * (W / 2 - 0.38), 0.38, -L / 2 - 0.12));
+    if (cfg.grille !== 'closed') {
+      const ex = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 10), chrome);
+      ex.rotation.x = Math.PI / 2; ex.position.set(0.55, 0.20, -L / 2 - 0.12); ex.castShadow = true; g.add(ex);
+    }
+    if (cfg.topRear > 0.95) g.add(box(W * 0.85, 0.05, 0.22, paint, 0, cb.yTop - 0.02, cb.cx0 - 0.05));
+    else g.add(box(W * 0.85, 0.04, 0.2, paint, 0, cfg.topRear + 0.01, -L / 2 + 0.12));
+  }
+  if (isPlayer) {
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.5, 6), dark);
     ant.position.set(0.5, cb.yTop + 0.3, cb.cx1 - 0.3); g.add(ant);
     const cs = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.2, L + 0.9), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
     cs.rotation.x = -Math.PI / 2; cs.position.y = 0.03; cs.userData.keepInG = true; g.add(cs);
   }
-  addWheel(-(W / 2 - 0.08), cfg.wheelF, cfg.wheelRr, true);
-  addWheel(W / 2 - 0.08, cfg.wheelF, cfg.wheelRr, true);
-  addWheel(-(W / 2 - 0.08), cfg.wheelR, cfg.wheelRr, false);
-  addWheel(W / 2 - 0.08, cfg.wheelR, cfg.wheelRr, false);
+  // wheels sit wider and further out than v3.2 (0.34 wide, outer face 0.12
+  // past the body side) so they are actually visible from the chase view
+  addWheel(-(W / 2 - 0.05), cfg.wheelF, cfg.wheelRr, true);
+  addWheel(W / 2 - 0.05, cfg.wheelF, cfg.wheelRr, true);
+  addWheel(-(W / 2 - 0.05), cfg.wheelR, cfg.wheelRr, false);
+  addWheel(W / 2 - 0.05, cfg.wheelR, cfg.wheelRr, false);
   // suspension: everything except wheels / headlight beam / contact shadow rides
   // on bodyAll, which bobs a centimetre or two in the render loop
   const bodyAll = new THREE.Group();
@@ -1823,14 +1924,18 @@ const P = {
 function resetPlayer() {
   let road, idx, heading;
   if (MODE === 'run') {
-    road = branch; idx = 0;
-    heading = Math.atan2(branch.tangents[0].x, branch.tangents[0].z);
+    // a few samples south of the junction, past the ribbon overlap (gate 1 is
+    // at 30% of the branch, far ahead of here)
+    road = branch; idx = 8;
+    heading = Math.atan2(branch.tangents[idx].x, branch.tangents[idx].z);
   } else {
-    road = highway; idx = roadNearestIdx(highway, 0, 0);
+    // SPAWN_IDX is a sample point on a straight stretch ~300 m west of the
+    // Mugling junction: nearestRoad d ≈ 0 at spawn, well inside the 5 m
+    // half-width, so the car is dead-centre on the asphalt and the off-road
+    // warning cannot fire at 0 km/h
+    road = highway; idx = SPAWN_IDX;
     heading = Math.atan2(highway.tangents[idx].x, highway.tangents[idx].z);
   }
-  // spawn exactly on the centreline: the old -2.3 m lane offset put the car
-  // half on the shoulder at the Mugling junction
   P.pos.set(road.pts[idx].x, road.roadY[idx], road.pts[idx].z);
   P.heading = heading;
   P.speed = 0; P.steer = 0; P.velX = 0; P.velZ = 0; P.steerInSm = 0;
@@ -2142,7 +2247,12 @@ function togglePause() {
   if (paused) { resetSteerInput(); touchGas = false; touchBrake = false; }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) { resetSteerInput(); touchGas = false; touchBrake = false; for (const k in keys) keys[k] = false; }
+  if (document.hidden) {
+    resetSteerInput(); touchGas = false; touchBrake = false; for (const k in keys) keys[k] = false;
+    // a backgrounded tab returns with one huge clamped dt — reset the frame
+    // EMA so it cannot count toward a false quality demotion
+    emaMs = 16; qBadT = 0; qGoodT = 0;
+  }
 });
 $('pauseBtn').addEventListener('click', togglePause);
 $('resumeBtn').addEventListener('click', togglePause);
@@ -2241,8 +2351,8 @@ function stepPhysics(dt) {
   // max road-wheel angle shrinks with speed so full-lock yaw stays ~0.7 rad/s
   const steerMax = Math.min(0.49, Math.atan(3.1 * 0.7 / Math.max(1, spd))) * cfg.steerFactor;
   P.steer = (reverseSteer ? 1 : -1) * P.steerInSm * steerMax;
-  // hard cap: full-lock yaw never exceeds ~0.8 rad/s
-  const steerCap = Math.atan(0.8 * 3.1 / Math.max(1, spd));
+  // hard cap: full-lock yaw never exceeds ~0.7 rad/s (research value)
+  const steerCap = Math.atan(0.7 * 3.1 / Math.max(1, spd));
   if (P.steer > steerCap) P.steer = steerCap;
   if (P.steer < -steerCap) P.steer = -steerCap;
   // surface from nearest road
@@ -2281,8 +2391,10 @@ function stepPhysics(dt) {
   }
   if (P.fuel <= 0) P.speed *= Math.max(0, 1 - dt * 1.5); // out of fuel: coast to a stop
   P.speed = Math.max(-5.5, Math.min(maxSpeed, P.speed));
-  // bicycle model
-  P.heading += (P.speed / 3.1) * Math.tan(P.steer) * dt;
+  // bicycle model — no yaw below ~0.5 m/s: at a standstill the front wheels
+  // may turn, but the car must not spin (v3.2: two taps swung the car
+  // 60–80° while it was barely moving at 1–2 km/h)
+  if (Math.abs(P.speed) > 0.5) P.heading += (P.speed / 3.1) * Math.tan(P.steer) * dt;
   const nfX = Math.sin(P.heading), nfZ = Math.cos(P.heading);
   const fwdSpeed = P.velX * nfX + P.velZ * nfZ;
   const latX = (P.velX - fwdSpeed * nfX) * Math.exp(-grip * dt);
@@ -2293,10 +2405,19 @@ function stepPhysics(dt) {
   if (Math.abs(P.pos.x) > 585) { P.pos.x = Math.sign(P.pos.x) * 585; P.velX = 0; }
   if (Math.abs(P.pos.z) > 585) { P.pos.z = Math.sign(P.pos.z) * 585; P.velZ = 0; }
   // ground height + terrain slope pitch/roll (bilinear samples from the
-  // precomputed height grid — zero noise calls in the physics step)
+  // precomputed height grid — zero noise calls in the physics step).
+  // Sit ON the ribbon, not sunk into it: asphalt top is roadY + 0.20, the
+  // gravel shoulder +0.10 (v3.2 put the car at roadY, 0.2 m under the
+  // asphalt). Blend down to the terrain past the shoulder so there is no
+  // step when leaving the road.
   let gy;
-  if (!P.offroad && nr.d <= 12) gy = nr.road.roadY[nr.i];
-  else gy = sampleHeight(P.pos.x, P.pos.z);
+  const hw = nr.road.width / 2;
+  if (nr.d <= hw) gy = nr.road.roadY[nr.i] + 0.20;
+  else if (nr.d <= hw + 1.3) gy = nr.road.roadY[nr.i] + 0.20 - 0.10 * ((nr.d - hw) / 1.3);
+  else if (nr.d <= hw + 4) {
+    const f = (nr.d - hw - 1.3) / 2.7, s = f * f * (3 - 2 * f), sh = nr.road.roadY[nr.i] + 0.10;
+    gy = sh + (sampleHeight(P.pos.x, P.pos.z) - sh) * s;
+  } else gy = sampleHeight(P.pos.x, P.pos.z);
   P.pos.y = gy;
   const e = 2;
   const hF = sampleHeight(P.pos.x + nfX * e, P.pos.z + nfZ * e);
@@ -2371,7 +2492,9 @@ function scoreTraffic() {
     const prev = P.overtakeMark[t.id];
     P.overtakeMark[t.id] = rel;
     if (prev === undefined) continue;
-    if (t.dir === pDir && prev > 0 && rel < -2) {
+    // only a MOVING vehicle counts: traffic stopped at a road end (speed 0)
+    // used to award "OVERTAKE +50" just for driving past it while parked
+    if (t.dir === pDir && t.speed > 2 && prev > 0 && rel < -2) {
       P.combo = P.comboTimer > 0 ? P.combo + 1 : 1;
       P.comboTimer = 4;
       const pts = 50 * P.combo;
@@ -2380,7 +2503,7 @@ function scoreTraffic() {
       $('combo').style.opacity = 1;
       setTimeout(() => $('combo').style.opacity = 0, 1500);
       beep(660, 0.1, 'sine', 0.12);
-    } else if (t.dir === -pDir && prev > 0 && rel < 0) {
+    } else if (t.dir === -pDir && t.speed > 2 && prev > 0 && rel < 0) {
       const dx = P.pos.x - t.g.position.x, dz = P.pos.z - t.g.position.z;
       const lat = Math.abs(dx * Math.cos(P.heading) - dz * Math.sin(P.heading));
       if (lat < 4.5 && lat > 2.2) {
@@ -2427,9 +2550,9 @@ function nearestLocation() {
 let camMode = 0;
 const camPos = new THREE.Vector3(0, 8, 20);
 let camInit = false;
-function cycleCamera() { camMode = (camMode + 1) % 3; toast(['Chase cam', 'Hood cam', 'High cam'][camMode]); }
+function cycleCamera() { camMode = (camMode + 1) % 4; toast(['Chase cam', 'Hood cam', 'High cam', 'Side cam'][camMode]); }
 function resetCamera() { camInit = false; }
-const _fwd = new THREE.Vector3(), _tgt = new THREE.Vector3(), _lk = new THREE.Vector3();
+const _fwd = new THREE.Vector3(), _tgt = new THREE.Vector3(), _lk = new THREE.Vector3(), _rgt = new THREE.Vector3();
 function updateCamera(dt) {
   _fwd.set(Math.sin(P.heading), 0, Math.cos(P.heading));
   if (camMode === 0) {
@@ -2438,6 +2561,13 @@ function updateCamera(dt) {
   } else if (camMode === 1) {
     _tgt.copy(P.pos).addScaledVector(_fwd, 1.2); _tgt.y += 1.9;
     _lk.copy(P.pos).addScaledVector(_fwd, 30); _lk.y += 0.8;
+  } else if (camMode === 3) {
+    // front three-quarter: the car's side + front, where all the detail lives.
+    // Chase (behind) and hood (plain hood) never showed the cars' sides, so
+    // three versions of detailing stayed invisible — this camera fixes that.
+    _rgt.set(-_fwd.z, 0, _fwd.x);
+    _tgt.copy(P.pos).addScaledVector(_fwd, 4.5).addScaledVector(_rgt, 5.5); _tgt.y += 2.2;
+    _lk.copy(P.pos).addScaledVector(_fwd, 1.5); _lk.y += 0.8;
   } else {
     _tgt.copy(P.pos).addScaledVector(_fwd, -16); _tgt.y += 10;
     _lk.copy(P.pos).addScaledVector(_fwd, 12);
@@ -2586,8 +2716,11 @@ function animate() {
   const dt = Math.min(0.1, clock.getDelta());
   elapsed += dt;
   if (!started) {
-    camera.position.set(Math.sin(elapsed * 0.05) * 60, 30, 45 + Math.cos(elapsed * 0.05) * 40);
-    camera.lookAt(0, 8, 20);
+    // menu showroom: slow orbit around the parked car so the player sees the
+    // car itself (not just the valley) before pressing Start
+    const a = elapsed * 0.15;
+    camera.position.set(P.pos.x + Math.sin(a) * 8, P.pos.y + 2.8, P.pos.z + Math.cos(a) * 8);
+    camera.lookAt(P.pos.x, P.pos.y + 1, P.pos.z);
     skyDome.position.copy(camera.position);
     clouds.forEach((c, i) => { c.position.x += dt * (1 + i % 3); if (c.position.x > 750) c.position.x = -750; });
     renderer.render(scene, camera);
