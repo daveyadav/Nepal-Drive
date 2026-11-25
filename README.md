@@ -20,6 +20,18 @@ and trucks, and chase your best lap.
 - Phone controls: drag left half to steer, GAS / BRAKE buttons on the right
 - Quality tiers: High / Medium / Low, with automatic drop if the frame rate falls
 
+## v3 (2026-11-25) — free world
+Open 1200×1200 m map, drive anywhere: Prithvi Highway across the map with
+Mugling in the middle, a road south to Narayanghat over the Trishuli bridge,
+a road through Mugling bazaar, a dirt track along the river to a rafting
+point, and switchbacks up to a hilltop viewpoint with snow peaks behind.
+Real cars built from extruded side profiles with wheel arches: pick a
+Bolero-style SUV, a Swift-style hatchback or a Hilux-style pickup (each
+drives differently). Free Ride mode: explore and discover 8 glowing places
+(bazaar, bridge, rafting point, viewpoint, tea shops, landslide, pump,
+Manakamana sign). Highway Run: timed Mugling → Narayanghat, 4 gates.
+Different surfaces (asphalt / dirt / off-road / river) change grip and speed.
+
 ## v2.2 (2026-11-25) — smoother handling, more realistic cars
 - Handling: steering now eases in (no snap), shrinks hard with speed, longer
   wheelbase, higher grip — the jeep turns calmly instead of twitching. Touch
