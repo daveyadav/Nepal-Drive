@@ -1398,6 +1398,7 @@ $('playBtn').onclick = () => {
     if (isTouch) $('touch').classList.add('on');
     started = true; paused = false;
     resetPlayer();
+    fpsEma = 60; fpsTimer = 0;
     $('lap').textContent = MODE === 'checkpoint' ? '🏁 CHECKPOINT RUN' : 'LAP 1/3';
     toast(MODE === 'checkpoint' ? '🟢 GO! Reach Narayanghat before the clock runs out' : '🟢 GO! 3 laps — overtake clean for points', 3000);
   }, 300);
@@ -1665,7 +1666,8 @@ function animate() {
   const tNow = clock.elapsedTime;
   if (dt > 0) fpsEma += ((1 / dt) - fpsEma) * 0.04;
   fpsTimer += dt;
-  if (fpsTimer > 2) { fpsTimer = 0; if (fpsEma < 32 && started && !paused) autoDrop(); }
+  // grace period: startup hitches must not trigger a false drop to Low
+  if (fpsTimer > 2) { fpsTimer = 0; if (fpsEma < 32 && started && !paused && P.elapsed > 10) autoDrop(); }
   for (const c of clouds) { c.position.x += dt * 1.8; if (c.position.x > 700) c.position.x = -700; }
   skyDome.position.set(camera.position.x, 0, camera.position.z);
   waterTex.offset.y -= dt * 0.015;
@@ -1726,9 +1728,9 @@ function animate() {
   if (camMode === 0) {
     camTarget.set(P.pos.x - fx * 9.5, P.pos.y + 3.4, P.pos.z - fz * 9.5);
     lookAt.set(P.pos.x + fx * 9, P.pos.y + 1.2, P.pos.z + fz * 9);
-  } else if (camMode === 1) {
-    camTarget.set(P.pos.x + fx * 0.4, P.pos.y + 1.5, P.pos.z + fz * 0.4);
-    lookAt.set(P.pos.x + fx * 26, P.pos.y + 0.8, P.pos.z + fz * 26);
+  } else if (camMode === 1) { // hood cam: sit higher + further back so the hood stays small
+    camTarget.set(P.pos.x - fx * 0.3, P.pos.y + 1.95, P.pos.z - fz * 0.3);
+    lookAt.set(P.pos.x + fx * 30, P.pos.y + 1.6, P.pos.z + fz * 30);
   } else {
     camTarget.set(P.pos.x - fx * 15, P.pos.y + 8.5, P.pos.z - fz * 15);
     lookAt.set(P.pos.x + fx * 12, P.pos.y, P.pos.z + fz * 12);
