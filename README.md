@@ -20,6 +20,38 @@ and trucks, and chase your best lap.
 - Phone controls: drag left half to steer, GAS / BRAKE buttons on the right
 - Quality tiers: High / Medium / Low, with automatic drop if the frame rate falls
 
+## v3.1 (2026-11-25) — lag, reversed steering and twitchy handling fixed
+Research-led fix pass for the three problems reported after playing v3 on a
+Redmi 10. (1) Steering was reversed: drag-right / D gave +steer and the
+bicycle model turns LEFT for positive steer — one sign was missing. Fixed
+with a single negation (`P.steer = -input * maxSteer`, verified against the
+car's nose axis: ExtrudeGeometry side profile, nose = local +Z, so
+`rotation.y = heading` is correct). Drag steering is now relative/anchored
+(touch-down point = anchor, 100 px = full lock, 10% dead zone, expo 1.35,
+anchor slides at full lock, returns to centre on release), with per-role
+pointer IDs so GAS/BRAKE fingers can't hijack steering, plus a "Reverse
+steering" toggle on the menu as a safety net. (2) Lag: DPR 1.0 on phones
+(1.5 desktop), no MSAA/stencil/alpha buffers, shadows off on phones (blob
+shadow under the player car only), terrain + props downgraded to Lambert on
+phones (clearcoat/PMREM kept only for the player car paint, PMREM skipped
+on phones), terrain 128×128 segments, static scenery merged into one
+vertex-colour mesh per group on phones (traffic bodies, houses, signs,
+bridge planks, boulders, drums), traffic wheels merged tyre+hub, minimap
+static layer cached offscreen and redrawn at ~8 Hz, physics samples a
+precomputed height grid instead of noise, zero allocations in the frame
+loop, adaptive ladder (demote after ~2.5 s over 21 ms/frame, promote after
+~8 s under 17 ms, 10 s grace reset on every Start). (3) Handling calmed:
+top speeds Bolero 80 / Swift 86 / Hilux 83 km/h, accel ~7 m/s² with taper,
+braking 11 m/s², reverse 20 km/h, max steer as a speed curve (28° parked →
+5° at top speed, full-lock yaw capped ~0.8 rad/s), steering smoothing
+150 ms in / faster return, FOV 63° +7 at top speed. Also fixed: car now
+spawns on the highway centreline at Mugling (was half on the shoulder),
+grass/houses can no longer spawn on any road ribbon (junctions included),
+and the "Graphics lowered" toast only fires on a real drop after the grace
+period. Bonus fix: dirt roads never slowed the car before — the code read
+`road.dirt`, a property that doesn't exist (roads have `surface`); dirt is
+now 18 m/s with grip 7.
+
 ## v3 (2026-11-25) — free world
 Open 1200×1200 m map, drive anywhere: Prithvi Highway across the map with
 Mugling in the middle, a road south to Narayanghat over the Trishuli bridge,
