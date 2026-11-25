@@ -52,6 +52,26 @@ period. Bonus fix: dirt roads never slowed the car before — the code read
 `road.dirt`, a property that doesn't exist (roads have `surface`); dirt is
 now 18 m/s with grip 7.
 
+## v3.2 (2026-11-25) — wheels that roll + real cars
+Wheels rebuilt: steer and spin are now separate nested groups (v3.1 put both
+rotations on one pivot, so a steered wheel tumbled instead of rolling), the
+roll comes from the render loop as distance travelled / actual wheel radius
+(the old fixed 0.35 divisor spun them up to 14% too fast), and the tyres got
+bold tread + high-contrast 5-spoke alloys (aero discs on the EV) so the roll
+is actually visible. Traffic wheels got spoke bars too. New player cars:
+City-style sedan (86 km/h), Creta-style SUV (83 km/h), modern EV SUV
+(90 km/h, quick off the line) — distinct profiles, glasshouses, grilles and
+light signatures (slim LEDs / split LEDs / full-width light bars), door shut
+lines, flush EV handles, blue accent, charging flap. Traffic adds City/Creta/
+EV + Bolero/Swift/Hilux/pickup. Subtle suspension bob (1–2 cm asphalt, more
+on dirt). Roads: richer asphalt (patches, tar seams, oil stains, cracks,
+worn markings), dirt ruts + stones. Bazaar: Nepali shop names (मोबाईल पसल,
+चिया पसल, किराना पसल), coloured awnings, street lights, bus-stop shelter,
+NOC pump branding + totem, varied houses (flat roofs, window frames,
+balconies). Bushes, dusty roadside tones, 3-colour terrace crops, sharper
+sign textures. Traffic headlight beams removed (only the player's is ever
+lit — each one cost shader time). Steering, handling and FOV unchanged.
+
 ## v3 (2026-11-25) — free world
 Open 1200×1200 m map, drive anywhere: Prithvi Highway across the map with
 Mugling in the middle, a road south to Narayanghat over the Trishuli bridge,
