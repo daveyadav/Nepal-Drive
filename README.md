@@ -20,6 +20,44 @@ and trucks, and chase your best lap.
 - Phone controls: drag left half to steer, GAS / BRAKE buttons on the right
 - Quality tiers: High / Medium / Low, with automatic drop if the frame rate falls
 
+## v3.3 (2026-11-25) — spawn, car sculpting, visible wheels, side camera
+Fix pass for the v3.2 live browser check (steering was already correct —
+D turns right, proven via hood cam). (1) Spawn: v3.1 spawned at the highway
+sample nearest (0,0) — the Mugling junction itself, where three ribbons
+overlap at slightly different smoothed heights, a grass wedge pokes over
+the asphalt, and a branch pole stands ~8 m behind the car in the
+chase-camera line. v3.3 spawns ~300 m west of the junction on a straight
+stretch, exactly on the centreline (a sample point, nearestRoad d ≈ 0),
+heading along the tangent; poles are now excluded within 25 m of the
+spawn; terrain flattening uses the LOWEST road height among nearby roads
+so it can never rise above any ribbon at a junction; and the car now sits
+ON the ribbon (asphalt top = roadY + 0.20, shoulder +0.10, blended down
+to the terrain past the shoulder) instead of sunk 0.2 m into it.
+(2) Cars sculpted: the extrude bevel swells the body ~0.045 past W/2, so
+the old mirrors/handles/shut lines (at W/2 + 0.005..0.06) were flush or
+hidden — everything now sits proud of the surface. Added: front + rear
+bumpers that stick out past the body with dark valances and fog lamps,
+door panels, side skirts, character line, bigger protruding mirrors,
+chrome window trim + B-pillar, roof crown + rain gutters + glass sunroof
+(sedan/EV), boot shut line, high-mount stop light, rear reflectors,
+exhaust tip, boot/roof spoiler. Door positions follow the cabin (sedan
+rear-biased, pickup forward), shut lines stay below the sloping beltline.
+(3) Wheels visible: the alloy-spoke texture is now on the tyre's outer
+cap faces too (CylinderGeometry groups are [side, top cap, bottom cap];
+the caps face ±X after rotateZ), wheels are wider (0.34) and sit further
+out (outer face 0.12 past the body), City/Swift wheels slightly bigger
+(0.40/0.38) to fill the arches. (4) Side camera: C now cycles
+Chase → Hood → High → Side (front three-quarter, shows the car's side +
+front), and the menu orbits the parked car as a showroom. (5) No yaw
+below 0.5 m/s (two taps spun the car 60–80° at 1–2 km/h) and the
+full-lock yaw cap is now 0.7 rad/s. (6) Overtakes only count for MOVING
+traffic (speed > 2 m/s) — stopped-at-end vehicles no longer award +50.
+(7) Auto-drop ladder verified: grace resets on every Start, demotion
+needs 2.5 s sustained >21 ms/frame after the grace, toast only on a real
+demotion — the High demotion in the test browser was genuine (remote
+cloud rendering), not a startup false trigger; plus the frame EMA now
+resets when the tab regains visibility.
+
 ## v3.1 (2026-11-25) — lag, reversed steering and twitchy handling fixed
 Research-led fix pass for the three problems reported after playing v3 on a
 Redmi 10. (1) Steering was reversed: drag-right / D gave +steer and the
