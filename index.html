@@ -94,7 +94,7 @@
   </div>
   <canvas id="map" width="300" height="300"></canvas>
   <div id="combo"></div>
-  <div id="speedBox" class="panel"><div id="speed">0 <small>km/h</small></div><div id="gear">D · BOLERO</div>
+  <div id="speedBox" class="panel"><div id="speed">0 <small>km/h</small></div><div id="gear">D · CITY</div>
     <div class="barRow">FUEL <span class="bar"><i id="fuelFill"></i></span></div>
     <div class="barRow">DAMAGE <span class="bar"><i id="dmgFill"></i></span></div>
   </div>
@@ -117,9 +117,9 @@
     <p class="sub">Free-world Nepal. A whole valley to drive — Prithvi Highway, Mugling bazaar, the Trishuli river, dirt tracks and hill switchbacks. Pick a car, go anywhere, find all 8 places.</p>
     <div class="chips"><span class="chip">🗺️ 1200×1200 FREE WORLD</span><span class="chip">🚙 3 REAL CARS</span><span class="chip">🏔️ 8 PLACES TO FIND</span><span class="chip">🌧️ 3 WEATHERS</span></div>
     <div class="pickRow"><span class="lbl">YOUR CAR</span>
-      <button class="pbtn sel" data-car="bolero">🚙 Bolero<small>boxy SUV · calm · 80 km/h</small></button>
-      <button class="pbtn" data-car="swift">🚗 Swift<small>hatchback · nimble · 86 km/h</small></button>
-      <button class="pbtn" data-car="hilux">🛻 Hilux<small>pickup · balanced · 83 km/h</small></button>
+      <button class="pbtn sel" data-car="city">🚗 City<small>sedan · smooth · 86 km/h</small></button>
+      <button class="pbtn" data-car="creta">🚙 Creta<small>SUV · stable · 83 km/h</small></button>
+      <button class="pbtn" data-car="ev">⚡ EV<small>electric SUV · quick · 90 km/h</small></button>
     </div>
     <div class="pickRow"><span class="lbl">MODE</span>
       <button class="pbtn sel" data-mode="free">🌍 Free Ride<small>explore · find 8 places</small></button>
@@ -158,14 +158,16 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-/* ============ Himalayan Drive v3 — Free World Nepal ============
+/* ============ Himalayan Drive v3.2 — Free World Nepal ============
    Open 1200x1200m valley: Prithvi Highway, Mugling bazaar, Trishuli river,
    dirt tracks, hill switchbacks. Extrude-profile cars modelled on real
-   Nepal road cars. Bicycle physics, free-ride discovery + highway run. */
+   Nepal road cars (City sedan, Creta SUV, modern EV). Wheels roll on a
+   nested spin group, driven by distance travelled / wheel radius.
+   Bicycle physics, free-ride discovery + highway run. */
 const $ = id => document.getElementById(id);
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const isMobile = isTouch || innerWidth < 700;
-let QUALITY = 'medium', MODE = 'free', WEATHER = 'autumn', CAR_KEY = 'bolero';
+let QUALITY = 'medium', MODE = 'free', WEATHER = 'autumn', CAR_KEY = 'city';
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); MODE = b.dataset.mode; });
 document.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-car]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); CAR_KEY = b.dataset.car; });
 document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-w]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); WEATHER = b.dataset.w; });
@@ -192,7 +194,7 @@ function speckle(x, w, h, n, colors, aMin = 0.12, aMax = 0.4, sMax = 2.2) {
 }
 function signTexture(lines, opts = {}) {
   let { bg = '#0b5e2e', fg = '#ffffff', w = 1024, h = 320, font = 64 } = opts;
-  if (isMobile && w > 512) { const k = 512 / w; w = 512; h = Math.max(48, Math.round(h * k)); font = Math.max(20, Math.round(font * k)); }
+  if (isMobile && w > 768) { const k = 768 / w; w = 768; h = Math.max(48, Math.round(h * k)); font = Math.max(20, Math.round(font * k)); }
   return makeTex(w, h, (x) => {
     x.fillStyle = bg; x.fillRect(0, 0, w, h);
     x.strokeStyle = fg; x.lineWidth = 7; x.strokeRect(14, 14, w - 28, h - 28);
@@ -204,36 +206,66 @@ function signTexture(lines, opts = {}) {
 
 /* asphalt tile: 12 m long, 10 m wide, markings baked in (never floating) */
 const asphaltTex = makeTex(256, 256, (x, w, h) => {
-  x.fillStyle = '#33343a'; x.fillRect(0, 0, w, h);
-  speckle(x, w, h, 2600, ['#45464d', '#26272c', '#4a4a42', '#3d3a33']);
-  for (let i = 0; i < 3; i++) {
-    x.globalAlpha = 0.28; x.fillStyle = '#26272b';
-    const px = Math.random() * 160, py = Math.random() * 200, pw = 40 + Math.random() * 70, ph = 26 + Math.random() * 40;
-    x.fillRect(px, py, pw, ph); x.globalAlpha = 1;
-    x.strokeStyle = 'rgba(12,12,14,0.7)'; x.lineWidth = 2; x.strokeRect(px, py, pw, ph);
+  x.fillStyle = '#34353b'; x.fillRect(0, 0, w, h);
+  // large tonal patches (worn / repaved areas)
+  for (let i = 0; i < 6; i++) {
+    x.globalAlpha = 0.16 + Math.random() * 0.14;
+    x.fillStyle = Math.random() > 0.5 ? '#3d3e45' : '#2b2c31';
+    x.fillRect(Math.random() * w, Math.random() * h, 60 + Math.random() * 120, 50 + Math.random() * 100);
   }
+  x.globalAlpha = 1;
+  speckle(x, w, h, 4200, ['#45464d', '#26272c', '#4a4a42', '#3d3a33', '#55565e', '#1f2024']);
+  // tar-sealed repair patches with dark seams
+  for (let i = 0; i < 4; i++) {
+    const px = Math.random() * 150, py = Math.random() * 190, pw = 44 + Math.random() * 76, ph = 30 + Math.random() * 44;
+    x.globalAlpha = 0.5; x.fillStyle = '#232428'; x.fillRect(px, py, pw, ph); x.globalAlpha = 1;
+    x.strokeStyle = 'rgba(8,8,10,0.9)'; x.lineWidth = 3; x.strokeRect(px, py, pw, ph);
+  }
+  // oil stains
+  for (let i = 0; i < 5; i++) {
+    const cx = 30 + Math.random() * 196, cy = Math.random() * h, r = 8 + Math.random() * 16;
+    const g = x.createRadialGradient(cx, cy, 1, cx, cy, r);
+    g.addColorStop(0, 'rgba(10,10,12,0.5)'); g.addColorStop(1, 'rgba(10,10,12,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill();
+  }
+  // cracks
   x.strokeStyle = 'rgba(15,15,18,0.85)'; x.lineWidth = 1.2;
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 10; i++) {
     x.beginPath(); let cx = Math.random() * w, cy = Math.random() * h; x.moveTo(cx, cy);
-    for (let j = 0; j < 5; j++) { cx += (Math.random() - 0.5) * 36; cy += Math.random() * 22; x.lineTo(cx, cy); }
+    for (let j = 0; j < 6; j++) { cx += (Math.random() - 0.5) * 36; cy += Math.random() * 22; x.lineTo(cx, cy); }
     x.stroke();
   }
+  // wheel tracks (two darker bands where tyres run)
   x.fillStyle = 'rgba(20,20,24,0.20)';
   x.fillRect(52, 0, 34, h); x.fillRect(170, 0, 34, h);
+  // dusty gravel edges
   const g1 = x.createLinearGradient(0, 0, 26, 0); g1.addColorStop(0, 'rgba(150,140,110,0.5)'); g1.addColorStop(1, 'rgba(150,140,110,0)');
   x.fillStyle = g1; x.fillRect(0, 0, 26, h);
   const g2 = x.createLinearGradient(w, 0, w - 26, 0); g2.addColorStop(0, 'rgba(150,140,110,0.5)'); g2.addColorStop(1, 'rgba(150,140,110,0)');
   x.fillStyle = g2; x.fillRect(w - 26, 0, 26, h);
+  // centre dash: 3 m dash / 9 m gap on a 12 m tile, worn white
   x.fillStyle = 'rgba(240,240,235,0.88)';
   x.fillRect(124, 0, 8, 64);
-  for (let i = 0; i < 14; i++) { x.fillStyle = `rgba(51,52,58,${0.25 + Math.random() * 0.5})`; x.fillRect(124, Math.random() * 64, 8, 2 + Math.random() * 5); }
+  for (let i = 0; i < 16; i++) { x.fillStyle = `rgba(51,52,58,${0.25 + Math.random() * 0.5})`; x.fillRect(124, Math.random() * 64, 8, 2 + Math.random() * 5); }
+  // worn yellow edge lines
   x.fillStyle = 'rgba(232,196,40,0.85)';
   x.fillRect(10, 0, 5, h); x.fillRect(w - 15, 0, 5, h);
-  for (let i = 0; i < 26; i++) { x.fillStyle = `rgba(51,52,58,${0.3 + Math.random() * 0.5})`; const ex = Math.random() > 0.5 ? 10 : w - 15; x.fillRect(ex, Math.random() * h, 5, 3 + Math.random() * 8); }
+  for (let i = 0; i < 30; i++) { x.fillStyle = `rgba(51,52,58,${0.3 + Math.random() * 0.5})`; const ex = Math.random() > 0.5 ? 10 : w - 15; x.fillRect(ex, Math.random() * h, 5, 3 + Math.random() * 8); }
 }, 1, 1);
 const dirtTex = makeTex(256, 256, (x, w, h) => {
   x.fillStyle = '#7a5c3e'; x.fillRect(0, 0, w, h);
-  speckle(x, w, h, 2200, ['#8a6c48', '#6b4c30', '#9a8a5a', '#5d4a33']);
+  speckle(x, w, h, 2600, ['#8a6c48', '#6b4c30', '#9a8a5a', '#5d4a33', '#a08a5e']);
+  // tyre ruts: two darker longitudinal bands
+  x.fillStyle = 'rgba(60,44,26,0.35)';
+  x.fillRect(52, 0, 30, h); x.fillRect(172, 0, 30, h);
+  // stones
+  for (let i = 0; i < 26; i++) {
+    x.fillStyle = ['#8a8a80', '#6b5a48', '#9a8a6a'][(Math.random() * 3) | 0];
+    x.globalAlpha = 0.5 + Math.random() * 0.4;
+    const sx = Math.random() * w, sy = Math.random() * h, sr = 2 + Math.random() * 4;
+    x.beginPath(); x.arc(sx, sy, sr, 0, 7); x.fill();
+  }
+  x.globalAlpha = 1;
 }, 1, 1);
 const detailTex = makeTex(256, 256, (x, w, h) => {
   x.fillStyle = '#e8e8e0'; x.fillRect(0, 0, w, h);
@@ -519,7 +551,8 @@ const SCARS = [{ x: 380, z: -80 }];
         cDry = new THREE.Color(0x9a8f57), cRock = new THREE.Color(0x6e6258),
         cSnow = new THREE.Color(0xe8eef2), cSand = new THREE.Color(0xb09a72),
         cScar = new THREE.Color(0x7a5c40), cGold = new THREE.Color(0xa8893f),
-        cGreen = new THREE.Color(0x5d7a33);
+        cGreen = new THREE.Color(0x5d7a33), cMustard = new THREE.Color(0xd8b83a),
+        cDust = new THREE.Color(0x9a8a62);
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     const h = H[i];
@@ -534,10 +567,11 @@ const SCARS = [{ x: 380, z: -80 }];
     if (h > 80) c.lerp(cSnow, Math.min(1, (h - 80) / 14));
     const near = nearestRoad(v.x, v.z), rv = distToRiver(v.x, v.z);
     if (h > 5 && h < 44 && near.d > 24 && rv.d > 16) {
-      const band = Math.floor((h + n * 2.6) / 2.4) % 2;
-      c.lerp(band === 0 ? cGreen : cGold, 0.5);
+      const band = Math.floor((h + n * 2.6) / 2.4) % 3;
+      c.lerp(band === 0 ? cGreen : band === 1 ? cGold : cMustard, 0.5);
     }
     if (rv.d < 13) c.lerp(cSand, Math.min(1, (13 - rv.d) / 9) * 0.8);
+    if (near.d < 20) c.lerp(cDust, (1 - near.d / 20) * 0.35); // dusty tones near roads
     for (const s of SCARS) {
       const d = Math.hypot(v.x - s.x, v.z - s.z);
       if (d < 30) c.lerp(cScar, (1 - d / 30) * 0.9);
@@ -839,20 +873,33 @@ for (const gt of GATES) {
 /* ---------- Mugling bazaar houses + scattered houses ---------- */
 const wallPalette = [0xe8dcc0, 0xdfe8ee, 0xf0d9c0, 0xd8e0c8, 0xe8c8c8];
 const roofPalette = [0xb3402e, 0x2e5d8a, 0x5a5a5a, 0x7a2e2e];
-function makeHouse(x, z, h, shop) {
+function makeHouse(x, z, h, shop, shopColor) {
   const g = new THREE.Group();
   const w = 5.5 + Math.random() * 3, d = 4.5 + Math.random() * 2, ht = 3.1 + Math.random() * 1.4;
   const wallMat = new THREE.MeshStandardMaterial({ color: wallPalette[(Math.random() * wallPalette.length) | 0], roughness: 0.9 });
   const roofMat = new THREE.MeshStandardMaterial({ color: roofPalette[(Math.random() * roofPalette.length) | 0], roughness: 0.85 });
   g.add(box(w, ht, d, wallMat, 0, ht / 2, 0));
-  const roof = box(w + 0.7, 0.16, d + 0.7, roofMat, 0, ht + 0.35, 0);
-  roof.rotation.z = 0.08; g.add(roof);
+  if (Math.random() < 0.35) { // flat roof with parapet (common in the bazaar)
+    g.add(box(w + 0.3, 0.25, d + 0.3, roofMat, 0, ht + 0.12, 0));
+    g.add(box(w + 0.3, 0.3, 0.12, wallMat, 0, ht + 0.3, d / 2 + 0.1));
+  } else {
+    const roof = box(w + 0.7, 0.16, d + 0.7, roofMat, 0, ht + 0.35, 0);
+    roof.rotation.z = 0.08; g.add(roof);
+  }
   const winMat = new THREE.MeshStandardMaterial({ color: 0x2a2118, emissive: 0xffb703, emissiveIntensity: 0.55, roughness: 0.4 });
-  g.add(box(0.9, 1.0, 0.08, winMat, -w * 0.22, 1.7, d / 2 + 0.03));
-  g.add(box(0.9, 1.0, 0.08, winMat, w * 0.22, 1.7, d / 2 + 0.03));
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.8 });
+  for (const wx of [-w * 0.22, w * 0.22]) {
+    g.add(box(1.05, 1.15, 0.05, frameMat, wx, 1.7, d / 2 + 0.02)); // white window frame
+    g.add(box(0.9, 1.0, 0.08, winMat, wx, 1.7, d / 2 + 0.03));
+  }
   g.add(box(0.9, 2.0, 0.08, new THREE.MeshStandardMaterial({ color: 0x4a3220, roughness: 0.9 }), 0, 1.0, d / 2 + 0.03));
+  if (ht > 3.6 && Math.random() < 0.5) { // upper-floor balcony
+    const conc = new THREE.MeshStandardMaterial({ color: 0xb8b0a0, roughness: 0.9 });
+    g.add(box(w * 0.7, 0.12, 1.0, conc, 0, 2.7, d / 2 + 0.5));
+    g.add(box(w * 0.7, 0.5, 0.05, new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.8 }), 0, 3.0, d / 2 + 0.98));
+  }
   if (shop) {
-    const awn = box(w * 0.9, 0.08, 1.6, new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.8 }), 0, 2.6, d / 2 + 0.8);
+    const awn = box(w * 0.9, 0.08, 1.6, new THREE.MeshStandardMaterial({ color: shopColor || 0x2e7d32, roughness: 0.8 }), 0, 2.6, d / 2 + 0.8);
     awn.rotation.x = 0.25; g.add(awn);
     const tex = signTexture([{ t: shop, big: true }], { bg: '#123a6e', w: 512, h: 128, font: 44 });
     const board = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.65), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
@@ -863,7 +910,8 @@ function makeHouse(x, z, h, shop) {
   scene.add(g);
 }
 {
-  const shopNames = ['HOTEL • खाना', 'COLD DRINKS', 'MOMO • मम', 'TEA HOUSE'];
+  const shopNames = ['मोबाईल पसल', 'चिया पसल', 'किराना पसल', 'होटल • खाना'];
+  const awnPalette = [0x2e7d32, 0xb03030, 0x2a5a8a, 0xd07020];
   let placed = 0;
   for (let k = 0; k < 16; k++) {
     const i = Math.floor((k / 15) * (townSpur.n - 1));
@@ -874,7 +922,7 @@ function makeHouse(x, z, h, shop) {
     if (Math.abs(h - townSpur.roadY[i]) > 9) continue;
     if (distToRiver(x, z).d < 12) continue;
     if (nearestRoad(x, z).d < 9) continue; // never on another road's ribbon (junctions)
-    makeHouse(x, z, h, placed < 4 ? shopNames[placed] : null);
+    makeHouse(x, z, h, placed < 4 ? shopNames[placed] : null, placed < 4 ? awnPalette[placed] : null);
     placed++;
   }
   let scattered = 0, tries = 0;
@@ -891,6 +939,33 @@ function makeHouse(x, z, h, shop) {
     makeHouse(x, z, h, null);
     scattered++;
   }
+}
+
+/* ---------- street lights along the bazaar + a bus-stop shelter ---------- */
+{
+  const lampGroup = new THREE.Group();
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2e3338, roughness: 0.7, metalness: 0.4 });
+  const lampMat = new THREE.MeshStandardMaterial({ color: 0xfff2bf, emissive: 0xffd9a0, emissiveIntensity: 1.2 });
+  for (let i = 6; i < townSpur.n - 4; i += 14) {
+    const side = ((i / 14) | 0) % 2 === 0 ? 1 : -1, n = townSpur.normals[i];
+    const x = townSpur.pts[i].x + n.x * side * 5.6, z = townSpur.pts[i].z + n.z * side * 5.6;
+    const y = townSpur.roadY[i], ry = Math.atan2(n.x, n.z);
+    lampGroup.add(box(0.14, 5.2, 0.14, poleMat, x, y + 2.6, z));
+    lampGroup.add(box(0.14, 0.14, 1.5, poleMat, x - n.x * side * 0.6, y + 5.15, z - n.z * side * 0.6, ry));
+    lampGroup.add(box(0.5, 0.12, 0.3, lampMat, x - n.x * side * 1.2, y + 5.05, z - n.z * side * 1.2, ry));
+  }
+  // bus-stop shelter near the middle of the bazaar
+  const bi = Math.floor(townSpur.n * 0.55), bn = townSpur.normals[bi];
+  const bx = townSpur.pts[bi].x + bn.x * 6.4, bz = townSpur.pts[bi].z + bn.z * 6.4, by = townSpur.roadY[bi];
+  const wood = new THREE.MeshStandardMaterial({ color: 0x5a4a30, roughness: 0.9 });
+  for (const [ox, oz] of [[-1.4, -0.8], [1.4, -0.8], [-1.4, 0.8], [1.4, 0.8]]) lampGroup.add(box(0.12, 2.4, 0.12, wood, bx + ox, by + 1.2, bz + oz));
+  lampGroup.add(box(3.4, 0.12, 2.2, new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.8 }), bx, by + 2.5, bz));
+  lampGroup.add(box(3.0, 0.4, 0.12, wood, bx, by + 0.45, bz - 0.7));
+  const stex = signTexture([{ t: 'BUS STOP', big: true }, { t: 'बस स्टप  •  MUGLING' }], { bg: '#123a6e', w: 768, h: 300, font: 56 });
+  const sboard = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshStandardMaterial({ map: stex, roughness: 0.6 }));
+  sboard.position.set(bx, by + 3.1, bz); lampGroup.add(sboard);
+  mergeStaticGroup(lampGroup);
+  scene.add(lampGroup);
 }
 
 /* ---------- chiya pasal tea shops ---------- */
@@ -930,13 +1005,21 @@ const pumpPos = new THREE.Vector3(35, 0, 60);
     g.add(box(0.9, 1.5, 0.6, red, s * 1.6, 0.75, 0));
     g.add(box(0.9, 0.5, 0.62, white, s * 1.6, 1.35, 0));
   }
-  const tex = signTexture([{ t: 'PETROL  •  डिजेल', big: true }], { bg: '#123a6e', w: 768, h: 160, font: 52 });
+  const tex = signTexture([{ t: 'NOC  •  पेट्रोल  •  डिजेल', big: true }], { bg: '#b02020', w: 768, h: 160, font: 52 });
   const board = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 0.95), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
   board.position.set(0, 5.4, 0); g.add(board);
   mergeStaticGroup(g);
   g.position.set(x, h, z);
   g.rotation.y = 0.8;
   scene.add(g);
+}
+{ // NOC totem sign by the road
+  const px = pumpPos.x, pz = pumpPos.z, ph = baseHeight(px, pz);
+  const tex = signTexture([{ t: 'NOC', big: true }, { t: 'PETROL  •  DIESEL' }], { bg: '#b02020', w: 512, h: 384, font: 72 });
+  const g2 = roadSignBoard(tex, 1.8, 1.35);
+  g2.position.set(px - 6, ph, pz + 8);
+  g2.rotation.y = 0.8;
+  scene.add(g2);
 }
 
 /* ---------- landslide scar on the east highway ---------- */
@@ -1197,7 +1280,7 @@ let grassMesh = null; const treeMeshes = [], treeCounts = [];
       m4.compose(new THREE.Vector3(x, h + 1.2 * s, z), q, sc.set(s * 0.85, s * 1.15, s * 0.85));
       pine.setMatrixAt(pi, m4); pine.setColorAt(pi, tint); pi++;
     } else if (bi < broad.count) {
-      m4.compose(new THREE.Vector3(x, h + 1.0 * s, z), q, sc.set(s, s, s));
+      m4.compose(new THREE.Vector3(x, h + 1.0 * s, z), q, sc.set(s * (0.85 + Math.random() * 0.35), s * (0.9 + Math.random() * 0.4), s * (0.85 + Math.random() * 0.35)));
       broad.setMatrixAt(bi, m4); broad.setColorAt(bi, tint); bi++;
     }
     ti++;
@@ -1240,6 +1323,33 @@ let grassMesh = null; const treeMeshes = [], treeCounts = [];
     grassMesh = grass;
     scene.add(grass);
   }
+  // bushes near the roads (one instanced draw call)
+  {
+    const bushGeo = new THREE.SphereGeometry(1, 8, 6);
+    const bushMat = new THREE.MeshLambertMaterial({ color: 0x4a6a2e });
+    const bushCount = 140;
+    const bushes = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
+    let bi2 = 0, tries2 = 0;
+    while (bi2 < bushCount && tries2 < bushCount * 20) {
+      tries2++;
+      const r = ROADS[(Math.random() * ROADS.length) | 0];
+      const i = Math.floor(Math.random() * r.n), side = Math.random() > 0.5 ? 1 : -1;
+      const n = r.normals[i];
+      const off = 8 + Math.random() * 14;
+      const x = r.pts[i].x + n.x * side * off, z = r.pts[i].z + n.z * side * off;
+      if (distToRiver(x, z).d < 8) continue;
+      if (nearestRoad(x, z).d < 8.5) continue;
+      const s = 0.5 + Math.random() * 0.9;
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
+      m4.compose(new THREE.Vector3(x, baseHeight(x, z) + 0.3 * s, z), q, sc.set(s, s * 0.6, s));
+      bushes.setMatrixAt(bi2, m4);
+      tint.setHSL(0.26 + Math.random() * 0.06, 0.5, 0.35 + Math.random() * 0.2);
+      bushes.setColorAt(bi2, tint);
+      bi2++;
+    }
+    bushes.count = bi2;
+    scene.add(bushes);
+  }
   const rockGeo = new THREE.DodecahedronGeometry(1.4, 0);
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x7d7468, roughness: 1, flatShading: true });
   const rocks = new THREE.InstancedMesh(rockGeo, rockMat, 170);
@@ -1274,14 +1384,54 @@ const shadowTex = makeTex(128, 128, (x, w, h) => {
   x.fillStyle = g; x.fillRect(0, 0, w, h);
 }, 1, 1);
 const alloyTex = makeTex(128, 128, (x, w, h) => {
-  x.fillStyle = '#22252a'; x.fillRect(0, 0, w, h);
-  x.fillStyle = '#c9d2d8';
+  x.fillStyle = '#15181c'; x.fillRect(0, 0, w, h);
+  // dark rim ring + bright face so the spokes read at a glance
+  x.beginPath(); x.arc(64, 64, 62, 0, 7); x.fillStyle = '#0a0b0d'; x.fill();
+  x.beginPath(); x.arc(64, 64, 58, 0, 7); x.fillStyle = '#d7dee3'; x.fill();
+  // 5 bold tapered spokes, high contrast against the dark tyre
+  x.fillStyle = '#eef3f6';
   for (let k = 0; k < 5; k++) {
     x.save(); x.translate(64, 64); x.rotate(k * Math.PI * 2 / 5);
-    x.fillRect(-7, -58, 14, 52); x.restore();
+    x.beginPath(); x.moveTo(-11, -14); x.lineTo(11, -14); x.lineTo(7, -56); x.lineTo(-7, -56); x.closePath(); x.fill();
+    x.restore();
   }
-  x.beginPath(); x.arc(64, 64, 14, 0, 7); x.fillStyle = '#8f979e'; x.fill();
+  // centre cap + lug nuts
+  x.beginPath(); x.arc(64, 64, 15, 0, 7); x.fillStyle = '#3a3f45'; x.fill();
+  x.beginPath(); x.arc(64, 64, 9, 0, 7); x.fillStyle = '#c9d2d8'; x.fill();
+  x.fillStyle = '#22252a';
+  for (let k = 0; k < 5; k++) { const a = k * Math.PI * 2 / 5; x.beginPath(); x.arc(64 + Math.cos(a) * 24, 64 + Math.sin(a) * 24, 3.5, 0, 7); x.fill(); }
 }, 1, 1);
+/* EV aero wheels: mostly-covered disc with 5 dark slots + blue centre cap */
+const aeroTex = makeTex(128, 128, (x, w, h) => {
+  x.fillStyle = '#101216'; x.fillRect(0, 0, w, h);
+  x.beginPath(); x.arc(64, 64, 62, 0, 7); x.fillStyle = '#c8d2d8'; x.fill();
+  x.fillStyle = '#101216';
+  for (let k = 0; k < 5; k++) {
+    x.save(); x.translate(64, 64); x.rotate(k * Math.PI * 2 / 5 + 0.3);
+    x.fillRect(-4, -60, 8, 46); x.restore();
+  }
+  x.beginPath(); x.arc(64, 64, 16, 0, 7); x.fillStyle = '#2f9df0'; x.fill();
+  x.beginPath(); x.arc(64, 64, 10, 0, 7); x.fillStyle = '#d7dee3'; x.fill();
+}, 1, 1);
+/* tyre tread: bold chevron blocks around the circumference (u) x across the width (v) */
+const treadTex = makeTex(256, 128, (x, w, h) => {
+  x.fillStyle = '#0c0d0f'; x.fillRect(0, 0, w, h);
+  x.fillStyle = '#23262b';
+  for (let i = 0; i < 16; i++) {
+    const u0 = i * 16;
+    for (let r = 0; r < 3; r++) {
+      const v0 = 8 + r * 40;
+      x.save(); x.translate(u0 + 8, v0 + 20); x.rotate(r === 1 ? 0 : (r === 0 ? 0.5 : -0.5));
+      x.fillRect(-6, -14, 12, 28); x.restore();
+    }
+  }
+  x.fillStyle = '#08090a';
+  x.fillRect(0, 40, w, 5); x.fillRect(0, 83, w, 5);
+  x.fillStyle = 'rgba(200,205,210,0.25)';
+  x.fillRect(0, 0, w, 3); x.fillRect(0, h - 3, w, 3);
+}, 1, 1);
+const treadMat = new THREE.MeshStandardMaterial({ map: treadTex, roughness: 0.95 });
+const sideMat = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.95 });
 function paintGeo(geo, hex) {
   const c = new THREE.Color(hex);
   const n = geo.attributes.position.count;
@@ -1291,24 +1441,48 @@ function paintGeo(geo, hex) {
   return geo;
 }
 const wheelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, metalness: 0.3 });
-function wheel(r, wdt, alloy = false) {
+/* Wheels: nested groups so the roll can never wobble.
+   pivot (rotation.y = steer) -> spin (rotation.x = roll about the axle only).
+   v3.1 put steer AND spin on the same pivot: with three.js Euler order XYZ
+   (R = Rx*Ry) the spin axis was the car-frame X, not the steered axle, so a
+   steered wheel tumbled instead of rolling. The spin group fixes that.
+   Roll is driven from the render loop by distance travelled / wheel radius
+   (see updateWheelRoll), never by a fixed 0.35 divisor in the physics step. */
+function wheel(r, wdt, alloy = false, aero = false) {
   const pivot = new THREE.Group();
+  const spin = new THREE.Group();
+  pivot.add(spin);
+  pivot.userData.spin = spin;
+  pivot.userData.r = r;
+  pivot.userData.isWheelPivot = true;
   if (!alloy) {
-    // traffic wheels: tyre + hub merged into ONE mesh (vertex colours) instead of two
+    // traffic wheels: tyre + hub + 5 spoke bars merged into ONE vertex-colour
+    // mesh. The dark spokes on the light hub make the roll visible from the side.
+    const parts = [];
     const tyreGeo = new THREE.CylinderGeometry(r, r, wdt, 18); tyreGeo.rotateZ(Math.PI / 2);
+    parts.push(paintGeo(tyreGeo, 0x0c0d0f));
     const hubGeo = new THREE.CylinderGeometry(r * 0.55, r * 0.55, wdt + 0.02, 12); hubGeo.rotateZ(Math.PI / 2);
-    const m = new THREE.Mesh(mergeGeometries([paintGeo(tyreGeo, 0x0c0d0f), paintGeo(hubGeo, 0xc9d2d8)]), wheelMat);
+    parts.push(paintGeo(hubGeo, 0xc9d2d8));
+    for (let k = 0; k < 5; k++) {
+      const sp = new THREE.BoxGeometry(wdt + 0.06, r * 0.55, r * 0.13);
+      sp.translate(0, r * 0.28, 0);
+      sp.rotateX(k * Math.PI * 2 / 5);
+      parts.push(paintGeo(sp, 0x2a2d31));
+    }
+    const m = new THREE.Mesh(mergeGeometries(parts), wheelMat);
     m.castShadow = true; m.userData.isWheel = true;
-    pivot.add(m);
+    spin.add(m);
     return pivot;
   }
+  // player wheels: treaded tyre (tread on the curved face, plain sidewalls)
+  // + bold-spoke alloy hub (or aero disc for the EV)
   const tyreGeo = new THREE.CylinderGeometry(r, r, wdt, 18); tyreGeo.rotateZ(Math.PI / 2);
-  const tyre = new THREE.Mesh(tyreGeo, new THREE.MeshStandardMaterial({ color: 0x0c0d0f, roughness: 0.95 }));
+  const tyre = new THREE.Mesh(tyreGeo, [treadMat, sideMat, sideMat]);
   tyre.castShadow = true; tyre.userData.isWheel = true;
-  const hubGeo = new THREE.CylinderGeometry(r * 0.55, r * 0.55, wdt + 0.02, 12); hubGeo.rotateZ(Math.PI / 2);
-  const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({ map: alloyTex, metalness: 0.8, roughness: 0.35 }));
+  const hubGeo = new THREE.CylinderGeometry(r * 0.58, r * 0.58, wdt + 0.02, 12); hubGeo.rotateZ(Math.PI / 2);
+  const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({ map: aero ? aeroTex : alloyTex, metalness: 0.8, roughness: 0.35 }));
   hub.userData.isWheel = true;
-  pivot.add(tyre, hub);
+  spin.add(tyre, hub);
   return pivot;
 }
 
@@ -1379,13 +1553,20 @@ function cabinShape(cx0, cx1, yBase, yTop, slopeF, slopeR) {
   s.closePath();
   return s;
 }
+/* Player cars are modelled on real Nepal road cars (no badges/logos):
+   City = Honda City-style sedan (long, low, sleek, slim LEDs), Creta =
+   Hyundai Creta-style SUV (tall, upright, split LEDs, big grille, rails),
+   EV = modern electric compact SUV (closed grille, full-width light bars,
+   aero wheels, blue accent, quick off the line). Bolero/Swift/Hilux stay
+   as traffic. lights: slim | split | bar | std. grille: chrome | big | closed. */
 const CAR_DEFS = {
-  bolero: { name: 'Bolero', color: 0xf2f2f0, L: 4.4, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.92, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.55, cx1: 0.75, yBase: 0.95, yTop: 1.72, slopeF: 0.45, slopeR: 0.15, w: 1.6 }, topSpeed: 22, steerFactor: 0.9, accel: 6.5, bed: false, rails: true },
-  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.82, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.36, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false },
-  hilux: { name: 'Hilux', color: 0xb8c8d8, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 23, steerFactor: 1.0, accel: 7, bed: true, rails: false },
-  sedan: { name: 'Sedan', color: 0x16a085, L: 4.6, W: 1.85, topRear: 0.9, topMid: 0.96, topFront: 0.8, wheelF: 1.45, wheelR: -1.45, wheelRr: 0.36, cabin: { cx0: -1.5, cx1: 0.9, yBase: 0.86, yTop: 1.42, slopeF: 0.65, slopeR: 0.4, w: 1.55 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: false, rails: false },
-  suv: { name: 'SUV', color: 0x2c3e50, L: 4.5, W: 1.9, topRear: 1.0, topMid: 1.04, topFront: 0.9, wheelF: 1.38, wheelR: -1.38, wheelRr: 0.40, cabin: { cx0: -1.55, cx1: 0.8, yBase: 0.94, yTop: 1.68, slopeF: 0.45, slopeR: 0.15, w: 1.62 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: false, rails: true },
-  pickup: { name: 'Pickup', color: 0x8a6a3a, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: true, rails: false }
+  city: { name: 'City', color: 0xe8e8e6, L: 4.6, W: 1.8, topRear: 0.82, topMid: 0.9, topFront: 0.72, wheelF: 1.42, wheelR: -1.42, wheelRr: 0.38, cabin: { cx0: -1.5, cx1: 0.95, yBase: 0.86, yTop: 1.32, slopeF: 0.7, slopeR: 0.55, w: 1.5 }, topSpeed: 24, steerFactor: 1.0, accel: 7, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  creta: { name: 'Creta', color: 0xb02020, L: 4.3, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.9, wheelF: 1.32, wheelR: -1.32, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.8, yBase: 0.95, yTop: 1.68, slopeF: 0.5, slopeR: 0.18, w: 1.6 }, topSpeed: 23, steerFactor: 0.95, accel: 6.8, bed: false, rails: true, lights: 'split', grille: 'big', aero: false, accent: null },
+  ev: { name: 'EV', color: 0xcfd8dc, L: 4.4, W: 1.85, topRear: 0.95, topMid: 1.0, topFront: 0.82, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.45, cx1: 0.85, yBase: 0.92, yTop: 1.55, slopeF: 0.6, slopeR: 0.3, w: 1.55 }, topSpeed: 25, steerFactor: 1.05, accel: 8.5, bed: false, rails: false, lights: 'bar', grille: 'closed', aero: true, accent: 0x2f9df0 },
+  bolero: { name: 'Bolero', color: 0xf2f2f0, L: 4.4, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.92, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.55, cx1: 0.75, yBase: 0.95, yTop: 1.72, slopeF: 0.45, slopeR: 0.15, w: 1.6 }, topSpeed: 22, steerFactor: 0.9, accel: 6.5, bed: false, rails: true, lights: 'std', grille: 'chrome', aero: false, accent: null },
+  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.82, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.36, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  hilux: { name: 'Hilux', color: 0xb8c8d8, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 23, steerFactor: 1.0, accel: 7, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null },
+  pickup: { name: 'Pickup', color: 0x8a6a3a, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null }
 };
 function buildExtrudeCar(cfg, color, opts = {}) {
   const { alloy = false, isPlayer = false } = opts;
@@ -1399,7 +1580,7 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   const L = cfg.L, W = cfg.W;
   const wheels = [], steers = [];
   const addWheel = (x, z, r, front) => {
-    const p = wheel(r, 0.3, alloy); p.position.set(x, r, z); g.add(p); wheels.push(p); if (front) steers.push(p);
+    const p = wheel(r, 0.3, alloy, cfg.aero); p.position.set(x, r, z); g.add(p); wheels.push(p); if (front) steers.push(p);
   };
   // body + cabin live in profile space (length = X); rotate so length becomes forward (+Z)
   const bodyG = new THREE.Group();
@@ -1422,20 +1603,61 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   if (cfg.rails) {
     for (const s of [-1, 1]) g.add(box(0.07, 0.07, (cb.cx1 - cb.cx0) * 0.8, dark, s * (W * 0.32), cb.yTop + 0.09, (cb.cx0 + cb.cx1) / 2));
   }
-  // front + rear details (group space, forward = +Z)
-  g.add(box(W * 0.5, 0.16, 0.06, chrome, 0, 0.66, L / 2 + 0.03)); // grille
-  for (let k = 0; k < 5; k++) g.add(box(0.06, 0.14, 0.03, dark, -0.18 + k * 0.09, 0.66, L / 2 + 0.07));
+  // front grille — per model: chrome slats / big dark grille / closed EV panel
+  if (cfg.grille === 'closed') {
+    g.add(box(W * 0.55, 0.22, 0.05, paint, 0, 0.66, L / 2 + 0.03)); // smooth closed nose
+  } else if (cfg.grille === 'big') {
+    g.add(box(W * 0.62, 0.3, 0.06, dark, 0, 0.62, L / 2 + 0.03)); // big dark grille
+    g.add(box(W * 0.62, 0.04, 0.07, chrome, 0, 0.79, L / 2 + 0.03)); // chrome frame top
+    g.add(box(W * 0.62, 0.04, 0.07, chrome, 0, 0.45, L / 2 + 0.03)); // chrome frame bottom
+    for (let k = 0; k < 4; k++) g.add(box(W * 0.5, 0.03, 0.07, chrome, 0, 0.53 + k * 0.06, L / 2 + 0.03));
+  } else {
+    g.add(box(W * 0.5, 0.16, 0.06, chrome, 0, 0.66, L / 2 + 0.03)); // chrome grille
+    for (let k = 0; k < 5; k++) g.add(box(0.06, 0.14, 0.03, dark, -0.18 + k * 0.09, 0.66, L / 2 + 0.07));
+  }
+  // headlights + taillights — per-model light signature
+  if (cfg.lights === 'bar') {
+    g.add(box(W * 0.82, 0.09, 0.08, lightMat, 0, 0.78, L / 2 + 0.03)); // full-width LED bar
+    g.add(box(W * 0.82, 0.09, 0.08, tailMat, 0, 0.78, -L / 2 - 0.03)); // full-width rear bar
+  } else if (cfg.lights === 'split') {
+    for (const s of [-1, 1]) {
+      g.add(box(0.45, 0.07, 0.08, lightMat, s * (W / 2 - 0.38), 0.86, L / 2 + 0.03)); // DRL strip
+      g.add(box(0.35, 0.18, 0.08, lightMat, s * (W / 2 - 0.38), 0.62, L / 2 + 0.03)); // main lamp
+      g.add(box(0.36, 0.16, 0.08, tailMat, s * (W / 2 - 0.4), 0.75, -L / 2 - 0.03));
+    }
+  } else if (cfg.lights === 'slim') {
+    for (const s of [-1, 1]) {
+      g.add(box(0.55, 0.1, 0.08, lightMat, s * (W / 2 - 0.42), 0.74, L / 2 + 0.03)); // slim LED
+      g.add(box(0.5, 0.1, 0.08, tailMat, s * (W / 2 - 0.42), 0.74, -L / 2 - 0.03));
+    }
+  } else {
+    for (const s of [-1, 1]) {
+      g.add(box(0.4, 0.18, 0.08, lightMat, s * (W / 2 - 0.4), 0.75, L / 2 + 0.03)); // headlight
+      g.add(box(0.36, 0.16, 0.08, tailMat, s * (W / 2 - 0.4), 0.75, -L / 2 - 0.03)); // taillight
+    }
+  }
   for (const s of [-1, 1]) {
-    g.add(box(0.4, 0.18, 0.08, lightMat, s * (W / 2 - 0.4), 0.75, L / 2 + 0.03)); // headlight
-    g.add(box(0.36, 0.16, 0.08, tailMat, s * (W / 2 - 0.4), 0.75, -L / 2 - 0.03)); // taillight
     g.add(box(0.06, 0.12, 0.1, dark, s * (W / 2 + 0.06), 1.15, 0.6)); // mirror
-    g.add(box(0.04, 0.05, 0.28, dark, s * (W / 2 + 0.01), 0.88, 0.2)); // door handle
-    g.add(box(0.04, 0.05, 0.28, dark, s * (W / 2 + 0.01), 0.88, -0.7));
+    // door handles: flush + body-coloured on the EV, dark on the rest
+    const hMat = cfg.lights === 'bar' ? paint : dark;
+    g.add(box(0.04, 0.05, 0.28, hMat, s * (W / 2 + 0.01), 0.88, 0.2));
+    g.add(box(0.04, 0.05, 0.28, hMat, s * (W / 2 + 0.01), 0.88, -0.7));
+    // door shut lines
+    g.add(box(0.015, 0.55, 0.02, dark, s * (W / 2 + 0.005), 0.75, 0.35));
+    g.add(box(0.015, 0.55, 0.02, dark, s * (W / 2 + 0.005), 0.75, -0.55));
+    // lower side cladding on the SUV / EV
+    if (cfg.lights === 'split' || cfg.lights === 'bar') g.add(box(0.04, 0.12, L * 0.55, dark, s * (W / 2 + 0.005), 0.32, 0));
     if (isPlayer) {
       const arch = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 6, 14, Math.PI), dark);
       arch.position.set(s * (W / 2 + 0.02), 0.42, cfg.wheelF); arch.rotation.y = Math.PI / 2; g.add(arch);
       const arch2 = arch.clone(); arch2.position.z = cfg.wheelR; g.add(arch2);
     }
+  }
+  // EV extras: blue side accent stripe + charging flap on the front-left fender
+  if (cfg.accent) {
+    const accMat = new THREE.MeshStandardMaterial({ color: cfg.accent, emissive: cfg.accent, emissiveIntensity: 0.5, roughness: 0.4 });
+    for (const s of [-1, 1]) g.add(box(0.03, 0.05, L * 0.7, accMat, s * (W / 2 + 0.01), 0.55, 0));
+    g.add(box(0.02, 0.18, 0.18, dark, -(W / 2 + 0.01), 0.95, 1.0)); // charging flap
   }
   const plateF = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.16), new THREE.MeshStandardMaterial({ map: plateTexture('BA 1 KHA 1234'), roughness: 0.5 }));
   plateF.position.set(0, 0.55, L / 2 + 0.07); g.add(plateF);
@@ -1444,23 +1666,42 @@ function buildExtrudeCar(cfg, color, opts = {}) {
     const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.5, 6), dark);
     ant.position.set(0.5, cb.yTop + 0.3, cb.cx1 - 0.3); g.add(ant);
     const cs = new THREE.Mesh(new THREE.PlaneGeometry(W + 1.2, L + 0.9), new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false }));
-    cs.rotation.x = -Math.PI / 2; cs.position.y = 0.03; g.add(cs);
+    cs.rotation.x = -Math.PI / 2; cs.position.y = 0.03; cs.userData.keepInG = true; g.add(cs);
   }
   addWheel(-(W / 2 - 0.08), cfg.wheelF, cfg.wheelRr, true);
   addWheel(W / 2 - 0.08, cfg.wheelF, cfg.wheelRr, true);
   addWheel(-(W / 2 - 0.08), cfg.wheelR, cfg.wheelRr, false);
   addWheel(W / 2 - 0.08, cfg.wheelR, cfg.wheelRr, false);
-  const beam = new THREE.SpotLight(0xfff2bf, 0, 55, 0.5, 0.5, 1.2);
-  beam.position.set(0, 0.9, L / 2); beam.target.position.set(0, 0, 30);
-  g.add(beam, beam.target);
+  // suspension: everything except wheels / headlight beam / contact shadow rides
+  // on bodyAll, which bobs a centimetre or two in the render loop
+  const bodyAll = new THREE.Group();
+  g.add(bodyAll);
+  for (const c of [...g.children]) {
+    if (c === bodyAll) continue;
+    if (c.userData && (c.userData.isWheelPivot || c.userData.keepInG)) continue;
+    bodyAll.add(c);
+  }
+  // only the player's car gets a real headlight beam (traffic beams were always
+  // intensity 0, yet each one still cost shader time on every material)
+  let beam = null;
+  if (isPlayer) {
+    beam = new THREE.SpotLight(0xfff2bf, 0, 55, 0.5, 0.5, 1.2);
+    beam.position.set(0, 0.9, L / 2); beam.target.position.set(0, 0, 30);
+    beam.userData.keepInG = true; beam.target.userData.keepInG = true;
+    g.add(beam, beam.target);
+  }
   if (!isPlayer) mergeStaticGroup(g); // traffic cars: one merged body mesh on mobile
-  g.userData = { wheels, steers, beam, L, W, kind: 'car' };
+  g.userData = { wheels, steers, beam, L, W, kind: 'car', wheelR: cfg.wheelRr, bodyG: bodyAll };
   return g;
 }
 
 function buildVehicle(kind, color) {
-  if (kind === 'sedan') return buildExtrudeCar(CAR_DEFS.sedan, color);
-  if (kind === 'suv') return buildExtrudeCar(CAR_DEFS.suv, color);
+  if (kind === 'sedan') return buildExtrudeCar(CAR_DEFS.city, color);
+  if (kind === 'suv') return buildExtrudeCar(CAR_DEFS.creta, color);
+  if (kind === 'ev') return buildExtrudeCar(CAR_DEFS.ev, color);
+  if (kind === 'bolero') return buildExtrudeCar(CAR_DEFS.bolero, color);
+  if (kind === 'swift') return buildExtrudeCar(CAR_DEFS.swift, color);
+  if (kind === 'hilux') return buildExtrudeCar(CAR_DEFS.hilux, color);
   if (kind === 'pickup') return buildExtrudeCar(CAR_DEFS.pickup, color);
   const g = new THREE.Group();
   const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.35 });
@@ -1534,7 +1775,10 @@ function buildVehicle(kind, color) {
     const tyreGeo = new THREE.TorusGeometry(0.32, 0.07, 8, 16);
     const tyreMat = new THREE.MeshStandardMaterial({ color: 0x0c0d0f, roughness: 0.95 });
     for (const z of [0.65, -0.65]) {
-      const w = new THREE.Mesh(tyreGeo, tyreMat); w.position.set(0, 0.32, z); w.rotation.y = Math.PI / 2; w.userData.isWheel = true; g.add(w); wheels.push(w);
+      const p = new THREE.Group(), sp = new THREE.Group();
+      p.add(sp); p.userData.spin = sp; p.userData.r = 0.32; p.userData.isWheelPivot = true;
+      const w = new THREE.Mesh(tyreGeo, tyreMat); w.rotation.y = Math.PI / 2; w.userData.isWheel = true;
+      sp.add(w); p.position.set(0, 0.32, z); g.add(p); wheels.push(p);
     }
     g.add(box(0.34, 0.22, 1.1, paint, 0, 0.62, 0));
     g.add(box(0.3, 0.12, 0.5, dark, 0, 0.78, -0.45));
@@ -1543,16 +1787,16 @@ function buildVehicle(kind, color) {
     helmet.position.set(0, 1.42, -0.35); g.add(helmet);
     g.add(box(0.3, 0.14, 0.08, lightMat, 0, 0.62, 0.98));
   }
-  const beam = new THREE.SpotLight(0xfff2bf, 0, 55, 0.5, 0.5, 1.2);
-  beam.position.set(0, 0.9, L / 2); beam.target.position.set(0, 0, 30);
-  g.add(beam, beam.target);
+  // no headlight beam on traffic vehicles (only the player's beam is ever lit;
+  // a SpotLight per vehicle still costs shader time on every material)
   mergeStaticGroup(g); // bus/truck/micro/bike: one merged body mesh on mobile
-  g.userData = { wheels, steers, beam, L, W, kind };
+  const wheelR = kind === 'bus' ? 0.46 : kind === 'truck' ? 0.44 : kind === 'micro' ? 0.34 : kind === 'bike' ? 0.32 : 0.38;
+  g.userData = { wheels, steers, beam: null, L, W, kind, wheelR };
   return g;
 }
 
 /* ---------- player car (menu choice) ---------- */
-let player = null, currentCarKey = 'bolero';
+let player = null, currentCarKey = 'city';
 function buildPlayerCar(key) {
   if (player) scene.remove(player);
   const cfg = CAR_DEFS[key];
@@ -1561,9 +1805,13 @@ function buildPlayerCar(key) {
   currentCarKey = key;
   return player;
 }
-buildPlayerCar('bolero');
+buildPlayerCar('city');
 
 /* ---------- player state ---------- */
+/* wheel roll state: angle accumulates from real distance travelled (render
+   loop), so the tyres always match the road — even when physics steps are
+   capped. prevPx/prevPz track the last frame's position. */
+let prevPx = 0, prevPz = 0, wheelAngle = 0;
 const P = {
   pos: new THREE.Vector3(), heading: 0, speed: 0, steer: 0, velX: 0, velZ: 0,
   road: highway, roadIdx: 0, prevRoadIdx: 0, surface: 'asphalt', offroad: false,
@@ -1597,6 +1845,7 @@ function resetPlayer() {
     loc.ring.visible = true;
   }
   player.position.copy(P.pos); player.rotation.set(0, P.heading, 0);
+  prevPx = P.pos.x; prevPz = P.pos.z;
 }
 resetPlayer();
 
@@ -1604,8 +1853,8 @@ resetPlayer();
 {
   const parked = [
     { kind: 'bus', color: 0x1d7a3a, x: 18, z: 38, ry: 0.5, r: 5.5 },
-    { kind: 'sedan', color: 0xc0c8ce, x: -8, z: 48, ry: -0.9, r: 2.6 },
-    { kind: 'suv', color: 0x2c3e50, x: 30, z: 30, ry: 1.8, r: 2.6 }
+    { kind: 'swift', color: 0xc02020, x: -8, z: 48, ry: -0.9, r: 2.6 },
+    { kind: 'hilux', color: 0xb8c8d8, x: 30, z: 30, ry: 1.8, r: 2.6 }
   ];
   for (const d of parked) {
     const g = buildVehicle(d.kind, d.color);
@@ -1623,17 +1872,20 @@ const traffic = [];
   { road: highway, kind: 'bus', color: 0xeaf2f8, dir: 1, speed: 13, lat: -2.5, s: 230 },
   { road: highway, kind: 'truck', color: 0x2456c8, dir: -1, speed: 10, lat: 2.5, s: 90 },
   { road: highway, kind: 'truck', color: 0xc0392b, dir: 1, speed: 11, lat: -2.5, s: 200 },
-  { road: highway, kind: 'sedan', color: 0x16a085, dir: 1, speed: 16, lat: -2.5, s: 60 },
-  { road: highway, kind: 'suv', color: 0x2c3e50, dir: -1, speed: 15, lat: 2.5, s: 180 },
+  { road: highway, kind: 'city', color: 0xc0c8ce, dir: 1, speed: 16, lat: -2.5, s: 60 },
+  { road: highway, kind: 'creta', color: 0x2c3e50, dir: -1, speed: 15, lat: 2.5, s: 180 },
+  { road: highway, kind: 'ev', color: 0x9fb8c8, dir: 1, speed: 17, lat: -2.5, s: 260 },
+  { road: highway, kind: 'bolero', color: 0xf2f2f0, dir: -1, speed: 14, lat: 2.5, s: 40 },
   { road: branch, kind: 'micro', color: 0xf2f2f2, dir: 1, speed: 14, lat: -2.3, s: 30 },
-  { road: branch, kind: 'truck', color: 0x8a6a3a, dir: -1, speed: 9, lat: 2.3, s: 80 },
-  { road: branch, kind: 'sedan', color: 0xc0c8ce, dir: 1, speed: 15, lat: -2.3, s: 110 },
+  { road: branch, kind: 'pickup', color: 0x8a6a3a, dir: -1, speed: 9, lat: 2.3, s: 80 },
+  { road: branch, kind: 'swift', color: 0xc02020, dir: 1, speed: 16, lat: -2.3, s: 110 },
+  { road: branch, kind: 'hilux', color: 0xb8c8d8, dir: -1, speed: 13, lat: 2.3, s: 140 },
   { road: townSpur, kind: 'micro', color: 0xc0c8ce, dir: 1, speed: 8, lat: -1.8, s: 15 },
   { road: townSpur, kind: 'bike', color: 0xd21f26, dir: -1, speed: 12, lat: 1.8, s: 25 }
 ].forEach((d, i) => {
   const g = buildVehicle(d.kind, d.color);
   scene.add(g);
-  traffic.push({ g, road: d.road, s: d.s, speed: d.speed, baseSpeed: d.speed, dir: d.dir, lat: d.lat, L: g.userData.L, kind: d.kind, id: i, honked: false, weave: Math.random() * 6 });
+  traffic.push({ g, road: d.road, s: d.s, speed: d.speed, baseSpeed: d.speed, dir: d.dir, lat: d.lat, L: g.userData.L, kind: d.kind, id: i, honked: false, weave: Math.random() * 6, px: undefined, pz: undefined, wheelAngle: 0, wheelR: g.userData.wheelR || 0.38 });
 });
 const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 function updateTraffic(dt, time) {
@@ -1667,8 +1919,42 @@ function updateTraffic(dt, time) {
     t.g.position.set(x, y + 0.05, z);
     t.g.rotation.y = Math.atan2(road.tangents[k].x, road.tangents[k].z) + (t.dir < 0 ? Math.PI : 0);
     if (t.kind === 'bike') t.g.rotation.z = Math.sin(time * 1.4 + t.weave) * 0.18;
-    const tw = t.g.userData.wheels;
-    for (let wi = 0; wi < tw.length; wi++) { const w = tw[wi]; if (w.rotation) w.rotation.x += t.speed * dt / 0.35; }
+    // wheel roll moved to updateWheelRoll (render loop, distance-based)
+  }
+}
+
+/* ---------- wheel roll + suspension (render loop, real frame dt) ----------
+   The roll angle comes from the car's ACTUAL signed displacement this frame
+   (forward component along the heading) divided by the wheel radius, so the
+   tyres turn exactly as fast as the road passes — ω = v / r, per car.
+   The spin is written to each wheel's nested spin group (rotation.x only),
+   never to the steer pivot, so a steered wheel still rolls on its own axle.
+   Suspension: the body (bodyAll) floats 1–2 cm on asphalt, a bit more on
+   dirt/off-road, while the wheels stay planted. */
+function setSpin(wheels, angle) {
+  for (let i = 0; i < wheels.length; i++) {
+    const w = wheels[i];
+    if (w.userData.spin) w.userData.spin.rotation.x = angle;
+    else w.rotation.x = angle;
+  }
+}
+function updateWheelRoll() {
+  const cfg = CAR_DEFS[currentCarKey];
+  const fwdX = Math.sin(P.heading), fwdZ = Math.cos(P.heading);
+  const dist = (P.pos.x - prevPx) * fwdX + (P.pos.z - prevPz) * fwdZ;
+  prevPx = P.pos.x; prevPz = P.pos.z;
+  wheelAngle += dist / cfg.wheelRr;
+  setSpin(player.userData.wheels, wheelAngle);
+  const amp = (P.offroad ? 0.025 : P.surface === 'dirt' ? 0.018 : 0.008) * Math.min(1, Math.abs(P.speed) / 8);
+  const bg = player.userData.bodyG;
+  if (bg) bg.position.y = Math.sin(elapsed * (8 + Math.abs(P.speed) * 0.9)) * amp;
+  for (const t of traffic) {
+    if (t.px === undefined) { t.px = t.g.position.x; t.pz = t.g.position.z; continue; }
+    const hx = Math.sin(t.g.rotation.y), hz = Math.cos(t.g.rotation.y);
+    const d = (t.g.position.x - t.px) * hx + (t.g.position.z - t.pz) * hz;
+    t.px = t.g.position.x; t.pz = t.g.position.z;
+    t.wheelAngle += d / t.wheelR;
+    setSpin(t.g.userData.wheels, t.wheelAngle);
   }
 }
 
@@ -2021,8 +2307,10 @@ function stepPhysics(dt) {
   const roll = Math.atan2(hL - hR, 2 * e) * 0.7;
   player.position.copy(P.pos);
   player.rotation.set(-pitch, P.heading, roll - P.steer * 0.1 * Math.min(1, spd / cfg.topSpeed));
-  const pw = player.userData.wheels, ps = player.userData.steers;
-  for (let i = 0; i < pw.length; i++) pw[i].rotation.x += P.speed * dt / 0.35;
+  // wheel roll is done in the render loop (updateWheelRoll) from distance
+  // travelled / wheel radius — never from the fixed physics step, and never
+  // on the steer pivot (see wheel(): spin lives on its own nested group)
+  const ps = player.userData.steers;
   for (let i = 0; i < ps.length; i++) ps[i].rotation.y = P.steer * 0.9;
   // fuel + pump refuel
   P.fuel = Math.max(0, P.fuel - (Math.abs(P.speed) * dt * 0.02 + (throttle ? dt * 0.01 : 0)));
@@ -2312,6 +2600,7 @@ function animate() {
     while (acc >= step && nSteps < 5) { stepPhysics(step); acc -= step; nSteps++; }
     if (acc >= step) acc = 0; // too far behind: slow the game slightly instead of spiralling
     updateTraffic(dt, elapsed);
+    updateWheelRoll();
     checkCollisions(dt);
     scoreTraffic();
     checkDiscovery();
