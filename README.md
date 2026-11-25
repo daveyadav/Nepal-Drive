@@ -20,6 +20,20 @@ and trucks, and chase your best lap.
 - Phone controls: drag left half to steer, GAS / BRAKE buttons on the right
 - Quality tiers: High / Medium / Low, with automatic drop if the frame rate falls
 
+## v2.2 (2026-11-25) — smoother handling, more realistic cars
+- Handling: steering now eases in (no snap), shrinks hard with speed, longer
+  wheelbase, higher grip — the jeep turns calmly instead of twitching. Touch
+  steering takes a longer drag for full lock.
+- Speed: gentler acceleration that tapers near the top, softer braking,
+  top speed ~108 km/h on road (~29 km/h off road) — easy to hold a steady
+  speed on the bends.
+- Cars: 5-spoke alloy wheels, wheel-arch trim, grille slats, fog lights,
+  wipers, door lines, side steps, mirror indicators, antenna, front + rear
+  plates and a soft contact shadow on the jeep; buses get window pillars,
+  side stripe, SAJHA YATAYAT boards and mirrors; trucks get grille, exhaust
+  stack, mud flaps and plates; micros and sedans get mirrors, handles, chrome
+  trim and plates.
+
 ## Controls
 
 | Key | Action |
