@@ -8,6 +8,12 @@ Narayanghat highway run.
 
 **Live:** https://daveyadav.github.io/Nepal-Drive/ (Pages: Settings → Pages → Deploy from branch → `main` → `/ (root)`)
 
+## v3.4.1 (2026-11-25) — warning fixes, showroom framing
+Off-road warning now purely positional (no false alarm at spawn, shows at
+any speed off-road), bus warning latched to ~3 s with a 5 s cooldown,
+showroom orbit reframed so the whole car sits above the 60vh menu card,
+stale warning state cleared on start/reset/pause.
+
 ## v3.4 (2026-11-25) — spokes, showroom, respawn
 Real geometry wheel spokes (the spoke texture had zero contrast — white on
 silver — so it never showed), menu showroom orbit that actually frames the
