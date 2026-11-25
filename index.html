@@ -48,8 +48,11 @@
   .tbtn.held{background:rgba(255,209,102,.88);color:#10233a;border-color:#ffd166}
   #tHorn{width:60px;height:60px;font-size:22px}
   /* menu */
-  #menu{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(6,14,24,.2),rgba(6,14,24,.84));padding:16px;overflow-y:auto}
-  #menuCard{max-width:660px;width:100%;text-align:center;padding:28px 26px 22px;border-radius:26px;background:rgba(8,20,34,.8);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(12px);box-shadow:0 30px 80px rgba(0,0,0,.55);margin:auto}
+  /* menu card sits at the BOTTOM so the top ~third of the screen stays clear
+     for the showroom orbit — the old centred card hid the car behind it, so
+     the menu background only ever showed roadside drifting past. */
+  #menu{position:fixed;inset:0;z-index:10;display:flex;align-items:flex-end;justify-content:center;background:linear-gradient(180deg,rgba(6,14,24,.2),rgba(6,14,24,.84));padding:16px 16px 14px;overflow-y:auto}
+  #menuCard{max-width:660px;width:100%;max-height:66vh;overflow-y:auto;text-align:center;padding:28px 26px 22px;border-radius:26px;background:rgba(8,20,34,.8);border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(12px);box-shadow:0 30px 80px rgba(0,0,0,.55);margin:0 auto}
   #menuCard h1{font-size:clamp(32px,7vw,50px);line-height:1.02;font-weight:900;letter-spacing:-.02em}
   #menuCard h1 span{color:#ffd166}
   #menuCard p.sub{color:#c7dcee;margin:10px auto 4px;font-size:15px;line-height:1.5;max-width:520px}
@@ -70,7 +73,10 @@
   #pause{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:rgba(5,12,20,.72)}
   #pauseCard{text-align:center;padding:30px;border-radius:22px;background:rgba(10,24,40,.9);border:1px solid rgba(255,255,255,.15)}
   #pauseCard h2{font-size:30px;margin-bottom:8px}
-  #pauseCard button{margin-top:14px;padding:13px 26px;border:0;border-radius:12px;background:#ffd166;font-weight:900;font-size:16px;cursor:pointer}
+  #pauseCard button{display:block;width:100%;margin-top:14px;padding:13px 26px;border:0;border-radius:12px;background:#ffd166;font-weight:900;font-size:16px;cursor:pointer}
+  #pauseCard button#resetBtn,#pauseCard button#repairBtn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
+  #verTag{position:absolute;right:14px;top:62px;font-size:11px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.55);pointer-events:none}
+  .ver{margin-top:14px;font-size:11px;color:#7d97ab;letter-spacing:.14em}
   @media (max-width:640px){
     #speed{font-size:40px} #speedBox{min-width:132px;padding:10px 12px}
     #map{width:112px;height:112px}
@@ -92,6 +98,7 @@
     <button class="hbtn" id="soundBtn">🔊 Sound</button>
     <button class="hbtn" id="pauseBtn">⏸ Pause</button>
   </div>
+  <div id="verTag">v3.4</div>
   <canvas id="map" width="300" height="300"></canvas>
   <div id="combo"></div>
   <div id="speedBox" class="panel"><div id="speed">0 <small>km/h</small></div><div id="gear">D · CITY</div>
@@ -144,12 +151,13 @@
       <div><b>W / ↑</b> — accelerate</div><div><b>S / ↓</b> — brake / reverse</div>
       <div><b>A D / ← →</b> — steer</div><div><b>H</b> — horn</div>
       <div><b>Touch</b> — drag left side to steer</div><div><b>Right side</b> — GAS / BRAKE buttons</div>
-      <div><b>Space</b> — handbrake</div><div><b>C</b> — camera · <b>R</b> — repair</div>
+      <div><b>Space</b> — handbrake</div><div><b>C</b> — camera · <b>R</b> — reset to road</div>
     </div>
+    <div class="ver">HIMALAYAN DRIVE · v3.4</div>
   </div>
 </div>
 
-<div id="pause"><div id="pauseCard"><h2>Paused</h2><p style="color:#bcd6ea">Take a breath. The mountains will wait.</p><button id="resumeBtn">Resume driving</button></div></div>
+<div id="pause"><div id="pauseCard"><h2>Paused</h2><p style="color:#bcd6ea">Take a breath. The mountains will wait.</p><button id="resumeBtn">Resume driving</button><button id="resetBtn">↩ Reset to road</button><button id="repairBtn">🔧 Repair (−50 pts)</button></div></div>
 
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -158,7 +166,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-/* ============ Himalayan Drive v3.3 — Free World Nepal ============
+/* ============ Himalayan Drive v3.4 — Free World Nepal ============
    Open 1200x1200m valley: Prithvi Highway, Mugling bazaar, Trishuli river,
    dirt tracks, hill switchbacks. Extrude-profile cars modelled on real
    Nepal road cars (City sedan, Creta SUV, modern EV). Wheels roll on a
@@ -169,7 +177,7 @@ const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 const isMobile = isTouch || innerWidth < 700;
 let QUALITY = 'medium', MODE = 'free', WEATHER = 'autumn', CAR_KEY = 'city';
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); MODE = b.dataset.mode; });
-document.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-car]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); CAR_KEY = b.dataset.car; });
+document.querySelectorAll('[data-car]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-car]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); CAR_KEY = b.dataset.car; if (!started) { buildPlayerCar(CAR_KEY); player.position.copy(P.pos); player.rotation.set(0, P.heading, 0); } });
 document.querySelectorAll('[data-w]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-w]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); WEATHER = b.dataset.w; });
 document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { document.querySelectorAll('[data-q]').forEach(x => x.classList.remove('sel')); b.classList.add('sel'); QUALITY = b.dataset.q; });
 
@@ -747,7 +755,7 @@ function roadNearestIdx(road, x, z) {
    v3.1 spawned at the highway sample nearest (0,0) — the junction itself, where
    three ribbons overlap at slightly different smoothed heights, a grass wedge
    pokes over the asphalt, and a branch pole stands ~8 m behind the car in the
-   chase-camera line. v3.3 spawns ~300 m west of the junction on a straight
+   chase-camera line. v3.4 spawns ~300 m west of the junction on a straight
    stretch: exactly on the centreline (a sample point, so nearestRoad d ≈ 0 —
    well inside the 5 m half-width, so the off-road warning cannot fire at
    0 km/h), heading along the road tangent. */
@@ -1422,13 +1430,20 @@ const shadowTex = makeTex(128, 128, (x, w, h) => {
   g.addColorStop(0, 'rgba(0,0,0,0.55)'); g.addColorStop(0.7, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
   x.fillStyle = g; x.fillRect(0, 0, w, h);
 }, 1, 1);
+/* v3.4 spoke diagnosis: the old texture drew near-white spokes (#eef3f6)
+   on a near-white face (#d7dee3) — zero contrast, so the Side view showed a
+   plain disc with only the centre cap and lug dots. The face is now DARK
+   gunmetal with BRIGHT spokes, and the wheels also carry real geometry
+   spokes (see wheel()) like the traffic wheels, which always read. */
 const alloyTex = makeTex(128, 128, (x, w, h) => {
-  x.fillStyle = '#15181c'; x.fillRect(0, 0, w, h);
-  // dark rim ring + bright face so the spokes read at a glance
-  x.beginPath(); x.arc(64, 64, 62, 0, 7); x.fillStyle = '#0a0b0d'; x.fill();
-  x.beginPath(); x.arc(64, 64, 58, 0, 7); x.fillStyle = '#d7dee3'; x.fill();
-  // 5 bold tapered spokes, high contrast against the dark tyre
-  x.fillStyle = '#eef3f6';
+  x.fillStyle = '#0b0d10'; x.fillRect(0, 0, w, h);
+  // dark outer ring + dark gunmetal face
+  x.beginPath(); x.arc(64, 64, 62, 0, 7); x.fillStyle = '#05070a'; x.fill();
+  x.beginPath(); x.arc(64, 64, 58, 0, 7); x.fillStyle = '#17191d'; x.fill();
+  // bright rim ring so the wheel edge reads against the dark tyre
+  x.beginPath(); x.arc(64, 64, 57, 0, 7); x.strokeStyle = '#c9d2d8'; x.lineWidth = 2.5; x.stroke();
+  // 5 bold tapered spokes, BRIGHT on DARK — high contrast both ways
+  x.fillStyle = '#e8edf0';
   for (let k = 0; k < 5; k++) {
     x.save(); x.translate(64, 64); x.rotate(k * Math.PI * 2 / 5);
     x.beginPath(); x.moveTo(-11, -14); x.lineTo(11, -14); x.lineTo(7, -56); x.lineTo(-7, -56); x.closePath(); x.fill();
@@ -1437,7 +1452,7 @@ const alloyTex = makeTex(128, 128, (x, w, h) => {
   // centre cap + lug nuts
   x.beginPath(); x.arc(64, 64, 15, 0, 7); x.fillStyle = '#3a3f45'; x.fill();
   x.beginPath(); x.arc(64, 64, 9, 0, 7); x.fillStyle = '#c9d2d8'; x.fill();
-  x.fillStyle = '#22252a';
+  x.fillStyle = '#0c0e11';
   for (let k = 0; k < 5; k++) { const a = k * Math.PI * 2 / 5; x.beginPath(); x.arc(64 + Math.cos(a) * 24, 64 + Math.sin(a) * 24, 3.5, 0, 7); x.fill(); }
 }, 1, 1);
 /* EV aero wheels: mostly-covered disc with 5 dark slots + blue centre cap */
@@ -1447,7 +1462,7 @@ const aeroTex = makeTex(128, 128, (x, w, h) => {
   x.fillStyle = '#101216';
   for (let k = 0; k < 5; k++) {
     x.save(); x.translate(64, 64); x.rotate(k * Math.PI * 2 / 5 + 0.3);
-    x.fillRect(-4, -60, 8, 46); x.restore();
+    x.fillRect(-5, -60, 10, 46); x.restore();
   }
   x.beginPath(); x.arc(64, 64, 16, 0, 7); x.fillStyle = '#2f9df0'; x.fill();
   x.beginPath(); x.arc(64, 64, 10, 0, 7); x.fillStyle = '#d7dee3'; x.fill();
@@ -1528,6 +1543,26 @@ function wheel(r, wdt, alloy = false, aero = false) {
   const hub = new THREE.Mesh(hubGeo, new THREE.MeshStandardMaterial({ map: aero ? aeroTex : alloyTex, metalness: 0.8, roughness: 0.35 }));
   hub.userData.isWheel = true;
   spin.add(tyre, hub);
+  // REAL geometry spokes on both outer faces (v3.4): the cap texture alone
+  // could not show spokes — light on light — and the texture is partly
+  // hidden under the hub anyway. These bars sit proud of the hub/tyre face
+  // and roll with the wheel, exactly like the traffic wheels' merged spoke
+  // bars, which DID read side-on in the v3.2 check. Bright silver for
+  // alloys, dark slots for the EV's aero wheels.
+  const spokeParts = [];
+  const spokeCol = aero ? 0x14161a : 0xdfe6ea;
+  for (const sx of [-1, 1]) {
+    for (let k = 0; k < 5; k++) {
+      const sp = new THREE.BoxGeometry(0.035, r * 0.62, r * 0.15);
+      sp.translate(0, r * 0.52, 0);
+      sp.rotateX(k * Math.PI * 2 / 5);
+      sp.translate(sx * (wdt / 2 + 0.018), 0, 0);
+      spokeParts.push(paintGeo(sp, spokeCol));
+    }
+  }
+  const spokes = new THREE.Mesh(mergeGeometries(spokeParts), wheelMat);
+  spokes.userData.isWheel = true;
+  spin.add(spokes);
   return pivot;
 }
 
@@ -1605,11 +1640,11 @@ function cabinShape(cx0, cx1, yBase, yTop, slopeF, slopeR) {
    aero wheels, blue accent, quick off the line). Bolero/Swift/Hilux stay
    as traffic. lights: slim | split | bar | std. grille: chrome | big | closed. */
 const CAR_DEFS = {
-  city: { name: 'City', color: 0xe8e8e6, L: 4.6, W: 1.8, topRear: 0.82, topMid: 0.9, topFront: 0.72, wheelF: 1.42, wheelR: -1.42, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.95, yBase: 0.86, yTop: 1.32, slopeF: 0.7, slopeR: 0.55, w: 1.5 }, topSpeed: 24, steerFactor: 1.0, accel: 7, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  city: { name: 'City', color: 0xe8e8e6, L: 4.6, W: 1.8, topRear: 0.82, topMid: 0.92, topFront: 0.88, wheelF: 1.42, wheelR: -1.42, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.95, yBase: 0.86, yTop: 1.32, slopeF: 0.7, slopeR: 0.55, w: 1.5 }, topSpeed: 24, steerFactor: 1.0, accel: 7, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
   creta: { name: 'Creta', color: 0xb02020, L: 4.3, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.9, wheelF: 1.32, wheelR: -1.32, wheelRr: 0.40, cabin: { cx0: -1.5, cx1: 0.8, yBase: 0.95, yTop: 1.68, slopeF: 0.5, slopeR: 0.18, w: 1.6 }, topSpeed: 23, steerFactor: 0.95, accel: 6.8, bed: false, rails: true, lights: 'split', grille: 'big', aero: false, accent: null },
-  ev: { name: 'EV', color: 0xcfd8dc, L: 4.4, W: 1.85, topRear: 0.95, topMid: 1.0, topFront: 0.82, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.45, cx1: 0.85, yBase: 0.92, yTop: 1.55, slopeF: 0.6, slopeR: 0.3, w: 1.55 }, topSpeed: 25, steerFactor: 1.05, accel: 8.5, bed: false, rails: false, lights: 'bar', grille: 'closed', aero: true, accent: 0x2f9df0 },
+  ev: { name: 'EV', color: 0xcfd8dc, L: 4.4, W: 1.85, topRear: 0.95, topMid: 1.0, topFront: 0.88, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.45, cx1: 0.85, yBase: 0.92, yTop: 1.55, slopeF: 0.6, slopeR: 0.3, w: 1.55 }, topSpeed: 25, steerFactor: 1.05, accel: 8.5, bed: false, rails: false, lights: 'bar', grille: 'closed', aero: true, accent: 0x2f9df0 },
   bolero: { name: 'Bolero', color: 0xf2f2f0, L: 4.4, W: 1.85, topRear: 1.02, topMid: 1.06, topFront: 0.92, wheelF: 1.35, wheelR: -1.35, wheelRr: 0.40, cabin: { cx0: -1.55, cx1: 0.75, yBase: 0.95, yTop: 1.72, slopeF: 0.45, slopeR: 0.15, w: 1.6 }, topSpeed: 22, steerFactor: 0.9, accel: 6.5, bed: false, rails: true, lights: 'std', grille: 'chrome', aero: false, accent: null },
-  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.82, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.38, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
+  swift: { name: 'Swift', color: 0xc02020, L: 4.0, W: 1.75, topRear: 0.92, topMid: 0.98, topFront: 0.88, wheelF: 1.22, wheelR: -1.22, wheelRr: 0.38, cabin: { cx0: -1.35, cx1: 0.65, yBase: 0.88, yTop: 1.48, slopeF: 0.6, slopeR: 0.35, w: 1.45 }, topSpeed: 24, steerFactor: 1.15, accel: 7.5, bed: false, rails: false, lights: 'slim', grille: 'chrome', aero: false, accent: null },
   hilux: { name: 'Hilux', color: 0xb8c8d8, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 23, steerFactor: 1.0, accel: 7, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null },
   pickup: { name: 'Pickup', color: 0x8a6a3a, L: 5.2, W: 1.9, topRear: 0.98, topMid: 1.02, topFront: 0.9, wheelF: 1.62, wheelR: -1.62, wheelRr: 0.40, cabin: { cx0: -0.1, cx1: 1.35, yBase: 0.92, yTop: 1.58, slopeF: 0.5, slopeR: 0.2, w: 1.65 }, topSpeed: 30, steerFactor: 1.0, accel: 12, bed: true, rails: false, lights: 'std', grille: 'chrome', aero: false, accent: null }
 };
@@ -1621,7 +1656,10 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   const dark = new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.85 });
   const chrome = new THREE.MeshStandardMaterial({ color: 0xd7dee3, roughness: 0.25, metalness: 0.9 });
   const lightMat = new THREE.MeshStandardMaterial({ color: 0xfff6c9, emissive: 0xffe89a, emissiveIntensity: 1.8 });
-  const tailMat = new THREE.MeshStandardMaterial({ color: 0xaa1111, emissive: 0xcc0000, emissiveIntensity: 1.4 });
+  // taillights: DIM at rest (0.25) — the old 1.4 made the rear bars glow in
+  // every frame, even parked with no input. updateHUD() raises this to 1.8
+  // only while braking or reversing.
+  const tailMat = new THREE.MeshStandardMaterial({ color: 0xaa1111, emissive: 0xcc0000, emissiveIntensity: 0.25 });
   const L = cfg.L, W = cfg.W;
   const wheels = [], steers = [];
   const addWheel = (x, z, r, front) => {
@@ -1705,13 +1743,19 @@ function buildExtrudeCar(cfg, color, opts = {}) {
   // put doors on the bonnet or the bed.
   const cabC = (cb.cx0 + cb.cx1) / 2;
   const fDoorZ = cabC + 0.45, rDoorZ = cabC - 0.45;
-  const mirZ = cb.cx1 - 0.25; // A-pillar
+  const mirZ = cb.cx1 - 0.12; // A-pillar base, at the beltline
+  const mirY = cb.yBase + 0.12;
   const skirtLen = (cfg.wheelF - 0.5) - (cfg.wheelR + 0.5);
   for (const s of [-1, 1]) {
-    // mirror: stalk + housing that actually protrudes, glass on the rear face
-    g.add(box(0.05, 0.05, 0.14, dark, s * (W / 2 + 0.06), 1.12, mirZ));
-    g.add(box(0.10, 0.14, 0.18, paint, s * (W / 2 + 0.13), 1.14, mirZ));
-    g.add(box(0.08, 0.10, 0.02, dark, s * (W / 2 + 0.13), 1.14, mirZ - 0.10));
+    // mirror: the old stalk floated in mid-air — it started at W/2 but the
+    // body at mirror height is only cb.w/2 wide, so nothing connected it to
+    // the car and the far mirror read as detached above the roofline. The
+    // stalk now runs from the cabin side out to the housing, at beltline
+    // height, so the mirror is visibly attached from any angle.
+    const stalkLen = (W / 2 + 0.10) - (cb.w / 2 - 0.02);
+    g.add(box(stalkLen, 0.04, 0.05, dark, s * ((W / 2 + 0.10 + cb.w / 2 - 0.02) / 2), mirY, mirZ));
+    g.add(box(0.10, 0.13, 0.17, paint, s * (W / 2 + 0.12), mirY + 0.02, mirZ));
+    g.add(box(0.09, 0.11, 0.02, dark, s * (W / 2 + 0.12), mirY + 0.02, mirZ - 0.095));
     // door panels: thin proud slabs so the sides read as doors, not a slab
     g.add(box(0.02, 0.38, 0.85, paint, s * (W / 2 + 0.045), 0.60, fDoorZ));
     if (!cfg.bed) g.add(box(0.02, 0.38, 0.85, paint, s * (W / 2 + 0.045), 0.60, rDoorZ));
@@ -1728,9 +1772,13 @@ function buildExtrudeCar(cfg, color, opts = {}) {
     g.add(box(0.02, 0.04, 1.6, dark, s * (W / 2 + 0.05), 0.80, cabC));
     // lower side cladding on the SUV / EV
     if (cfg.lights === 'split' || cfg.lights === 'bar') g.add(box(0.04, 0.12, L * 0.55, dark, s * (W / 2 + 0.055), 0.32, 0));
-    // wheel-arch flares on every car now, not just the player's
-    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.05, 6, 14, Math.PI), dark);
-    arch.position.set(s * (W / 2 + 0.04), 0.42, cfg.wheelF); arch.rotation.y = Math.PI / 2; g.add(arch);
+    // wheel-arch flares: the old torus (r 0.5 at y 0.42) topped out at 0.97,
+    // above the hood line (0.72–0.92). The flare now follows the body's own
+    // arch opening — centre at the bottom edge (hb 0.28), radius 0.48, top
+    // 0.80, below every hood line — and sits outboard of the tyre face so
+    // the whole ring reads from the side instead of hiding behind the tyre.
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(0.48, 0.04, 6, 16, Math.PI), dark);
+    arch.position.set(s * (W / 2 + 0.14), 0.28, cfg.wheelF); arch.rotation.y = Math.PI / 2; g.add(arch);
     const arch2 = arch.clone(); arch2.position.z = cfg.wheelR; g.add(arch2);
     // chrome window trim along the bottom of the glass + B-pillar, so the
     // cabin glass is not one flat dark slab
@@ -1792,7 +1840,7 @@ function buildExtrudeCar(cfg, color, opts = {}) {
     g.add(beam, beam.target);
   }
   if (!isPlayer) mergeStaticGroup(g); // traffic cars: one merged body mesh on mobile
-  g.userData = { wheels, steers, beam, L, W, kind: 'car', wheelR: cfg.wheelRr, bodyG: bodyAll };
+  g.userData = { wheels, steers, beam, L, W, kind: 'car', wheelR: cfg.wheelRr, bodyG: bodyAll, tailMat };
   return g;
 }
 
@@ -1918,7 +1966,7 @@ const P = {
   road: highway, roadIdx: 0, prevRoadIdx: 0, surface: 'asphalt', offroad: false,
   lap: 1, lapStart: 0, elapsed: 0, timeLeft: 0,
   damage: 0, fuel: 100, score: 0, combo: 0, comboTimer: 0,
-  gateIdx: 0, overtakeMark: {}, finished: false, foundCount: 0,
+  gateIdx: 0, overtakeMark: {}, overtakeSide: {}, finished: false, foundCount: 0,
   latVel: 0, accSm: 0, refuelT: 0, hitCd: 0, steerInSm: 0, deepCd: 0
 };
 function resetPlayer() {
@@ -1942,7 +1990,7 @@ function resetPlayer() {
   P.road = road; P.roadIdx = idx; P.prevRoadIdx = idx; P.surface = 'asphalt'; P.offroad = false;
   P.lap = 1; P.lapStart = 0; P.elapsed = 0;
   P.damage = 0; P.fuel = 100; P.score = 0; P.combo = 0; P.comboTimer = 0;
-  P.gateIdx = 0; P.overtakeMark = {}; P.finished = false; P.foundCount = 0;
+  P.gateIdx = 0; P.overtakeMark = {}; P.overtakeSide = {}; P.finished = false; P.foundCount = 0;
   P.timeLeft = MODE === 'run' ? 240 : 0;
   for (const loc of LOCATIONS) {
     loc.found = false;
@@ -2183,7 +2231,7 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'KeyH') horn();
   if (e.code === 'KeyC') cycleCamera();
-  if (e.code === 'KeyR') repair();
+  if (e.code === 'KeyR' && started && !paused) respawn();
   if (e.code === 'Space') e.preventDefault();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
@@ -2256,6 +2304,8 @@ document.addEventListener('visibilitychange', () => {
 });
 $('pauseBtn').addEventListener('click', togglePause);
 $('resumeBtn').addEventListener('click', togglePause);
+$('resetBtn').addEventListener('click', () => { respawn(); togglePause(); });
+$('repairBtn').addEventListener('click', () => { repair(); });
 $('camBtn').addEventListener('click', () => cycleCamera());
 $('soundBtn').addEventListener('click', () => {
   soundOn = !soundOn;
@@ -2263,11 +2313,30 @@ $('soundBtn').addEventListener('click', () => {
   if (masterGain) masterGain.gain.value = soundOn ? 0.9 : 0;
 });
 function repair() {
-  if (!started || paused) return;
+  if (!started) return; // callable from the Pause menu, so no paused guard
   if (P.damage <= 0 && P.fuel > 50) return;
   P.damage = 0; P.fuel = 100; P.score = Math.max(0, P.score - 50);
   setScore(P.score);
   toast('Repaired & refuelled (−50 pts)');
+}
+
+/* R = respawn on the nearest road centre (no penalty). The old R repaired;
+   repair is now a Pause-menu button, since a stranded car needs a reset
+   far more often than a repair — before this, the only way back from
+   off-road was reloading the page. */
+function respawn() {
+  if (!started) return;
+  const nr = nearestRoad(P.pos.x, P.pos.z, _nr);
+  const road = nr.road, idx = nr.i, t = road.tangents[idx];
+  P.pos.set(road.pts[idx].x, road.roadY[idx], road.pts[idx].z);
+  P.heading = Math.atan2(t.x, t.z);
+  P.speed = 0; P.steer = 0; P.velX = 0; P.velZ = 0; P.steerInSm = 0;
+  P.road = road; P.roadIdx = idx; P.prevRoadIdx = idx; P.offroad = false; P.surface = 'asphalt';
+  player.position.copy(P.pos); player.rotation.set(0, P.heading, 0);
+  prevPx = P.pos.x; prevPz = P.pos.z;
+  resetSteerInput(); touchGas = false; touchBrake = false;
+  resetCamera();
+  toast('↩ Back on the road');
 }
 
 /* ---------- play ---------- */
@@ -2481,20 +2550,41 @@ function checkCollisions(dt) {
   }
 }
 
-/* ---------- overtake / near-miss scoring (per-road, metre-relative) ---------- */
+/* ---------- overtake / near-miss scoring (player-relative, v3.4) ----------
+   An overtake counts ONLY when the PLAYER passes a traffic vehicle: the
+   player's longitudinal position relative to that vehicle flips from ahead
+   (traffic in front) to behind (traffic passed), while the player is the
+   faster one (player speed > traffic speed + 2 m/s, player speed > 5 m/s)
+   and travelling the same way (heading dot > 0.7). Traffic passing the
+   player, parked vehicles and oncoming vehicles can never score — the old
+   per-road-index rule credited the player for exactly those (score 0 -> 350
+   while crawling at 1 km/h). A 4 m hysteresis band (+/-2 m) stops jitter
+   from re-arming the flip, and a per-frame delta cap rejects the teleport
+   jump when a vehicle respawns at a road end. */
 function scoreTraffic() {
   if (P.offroad) return;
-  const pDir = Math.sign(P.roadIdx - P.prevRoadIdx);
-  if (pDir === 0) return;
+  const fx = Math.sin(P.heading), fz = Math.cos(P.heading);
   for (const t of traffic) {
-    if (t.road !== P.road) continue;
-    const rel = (t.s - P.roadIdx) * pDir;
-    const prev = P.overtakeMark[t.id];
-    P.overtakeMark[t.id] = rel;
-    if (prev === undefined) continue;
-    // only a MOVING vehicle counts: traffic stopped at a road end (speed 0)
-    // used to award "OVERTAKE +50" just for driving past it while parked
-    if (t.dir === pDir && t.speed > 2 && prev > 0 && rel < -2) {
+    if (t.road !== P.road || t.speed <= 2) continue; // same road, moving only
+    const dx = t.g.position.x - P.pos.x, dz = t.g.position.z - P.pos.z;
+    const relLong = dx * fx + dz * fz; // >0: traffic ahead of the player
+    const prevRel = P.overtakeMark[t.id];
+    P.overtakeMark[t.id] = relLong;
+    if (prevRel === undefined) { P.overtakeSide[t.id] = relLong > 2 ? 1 : relLong < -2 ? -1 : 0; continue; }
+    if (Math.abs(relLong - prevRel) > 10) { // respawn teleport, not a pass
+      P.overtakeSide[t.id] = relLong > 2 ? 1 : relLong < -2 ? -1 : 0;
+      continue;
+    }
+    const prevSide = P.overtakeSide[t.id] || 0;
+    const side = relLong > 2 ? 1 : relLong < -2 ? -1 : prevSide;
+    P.overtakeSide[t.id] = side;
+    if (!(prevSide === 1 && side === -1)) continue; // player must go from behind to ahead
+    if (P.speed < 5 || P.speed < t.speed + 2) continue; // the PLAYER must be the passer
+    const dot = fx * Math.sin(t.g.rotation.y) + fz * Math.cos(t.g.rotation.y);
+    if (dot < 0.7) continue; // same direction only — never oncoming
+    const lat = Math.abs(dx * Math.cos(P.heading) - dz * Math.sin(P.heading));
+    if (lat < 2.0) continue; // a clip is a collision, not a score (see checkCollisions)
+    if (lat >= 3.0) {
       P.combo = P.comboTimer > 0 ? P.combo + 1 : 1;
       P.comboTimer = 4;
       const pts = 50 * P.combo;
@@ -2503,15 +2593,11 @@ function scoreTraffic() {
       $('combo').style.opacity = 1;
       setTimeout(() => $('combo').style.opacity = 0, 1500);
       beep(660, 0.1, 'sine', 0.12);
-    } else if (t.dir === -pDir && t.speed > 2 && prev > 0 && rel < 0) {
-      const dx = P.pos.x - t.g.position.x, dz = P.pos.z - t.g.position.z;
-      const lat = Math.abs(dx * Math.cos(P.heading) - dz * Math.sin(P.heading));
-      if (lat < 4.5 && lat > 2.2) {
-        P.score += 25; setScore(P.score);
-        $('combo').textContent = 'NEAR MISS +25';
-        $('combo').style.opacity = 1;
-        setTimeout(() => $('combo').style.opacity = 0, 1500);
-      }
+    } else {
+      P.score += 25; setScore(P.score);
+      $('combo').textContent = 'NEAR MISS +25';
+      $('combo').style.opacity = 1;
+      setTimeout(() => $('combo').style.opacity = 0, 1500);
     }
   }
 }
@@ -2591,6 +2677,9 @@ function updateCamera(dt) {
 
 /* ---------- HUD + minimap ---------- */
 function updateHUD(dt) {
+  // brake lights: bright only while braking or reversing, dim otherwise
+  const tm = player.userData.tailMat;
+  if (tm) tm.emissiveIntensity = (keys['KeyS'] || keys['ArrowDown'] || touchBrake || P.speed < -0.3) ? 1.8 : 0.25;
   $('speed').innerHTML = Math.round(Math.abs(P.speed) * 3.6) + ' <small>km/h</small>';
   $('fuelFill').style.width = P.fuel + '%';
   $('dmgFill').style.width = P.damage + '%';
@@ -2716,11 +2805,13 @@ function animate() {
   const dt = Math.min(0.1, clock.getDelta());
   elapsed += dt;
   if (!started) {
-    // menu showroom: slow orbit around the parked car so the player sees the
-    // car itself (not just the valley) before pressing Start
-    const a = elapsed * 0.15;
-    camera.position.set(P.pos.x + Math.sin(a) * 8, P.pos.y + 2.8, P.pos.z + Math.cos(a) * 8);
-    camera.lookAt(P.pos.x, P.pos.y + 1, P.pos.z);
+    // menu showroom: slow orbit around the parked car, framed in the clear
+    // band ABOVE the bottom-docked menu card. Looking slightly below the car
+    // pushes it up in frame; the old orbit centred it behind the card, so
+    // all anyone saw was roadside drifting past.
+    const a = elapsed * 0.22;
+    camera.position.set(P.pos.x + Math.sin(a) * 8, P.pos.y + 2.6, P.pos.z + Math.cos(a) * 8);
+    camera.lookAt(P.pos.x, P.pos.y - 1.2, P.pos.z);
     skyDome.position.copy(camera.position);
     clouds.forEach((c, i) => { c.position.x += dt * (1 + i % 3); if (c.position.x > 750) c.position.x = -750; });
     renderer.render(scene, camera);
