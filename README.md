@@ -1,10 +1,21 @@
 # Himalayan Drive — Nepal Mountain Highway
 
 A 3D mountain-highway driving simulator that runs entirely in the browser.
-Drive a 4.2 km winding loop through green Himalayan hills, overtake buses
-and trucks, and chase your best lap.
+Free-world drive across a 1200 m Nepal valley: Prithvi Highway, Mugling
+bazaar, Trishuli river, dirt tracks and hill switchbacks. Pick a real-style
+car (City / Creta / EV), explore 8 places or run the timed Mugling →
+Narayanghat highway run.
 
 **Live:** https://daveyadav.github.io/Nepal-Drive/ (Pages: Settings → Pages → Deploy from branch → `main` → `/ (root)`)
+
+## v3.4 (2026-11-25) — spokes, showroom, respawn
+Real geometry wheel spokes (the spoke texture had zero contrast — white on
+silver — so it never showed), menu showroom orbit that actually frames the
+parked car (menu card docked at the bottom), overtake points only when YOU
+pass a moving car (position-based rule, no more free points when traffic
+passes you), R respawns the car on the road + pause-menu Reset/Repair
+buttons, brake lights dim at rest and bright only when braking, floating
+mirror + arch-above-hood glitches fixed, v3.4 label in menu + HUD.
 
 ## What is in v2 (research-led rebuild, 2026-11-25)
 
